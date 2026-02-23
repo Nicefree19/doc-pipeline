@@ -1,0 +1,128 @@
+# FileHub English Translation
+# Copyright (C) 2026 FileHub Team
+# This file is distributed under the MIT license.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: FileHub 0.1.0\n"
+"Language: en\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+# Application
+msgid "FileHub"
+msgstr "FileHub"
+
+msgid "File Naming Convention Watcher"
+msgstr "File Naming Convention Watcher"
+
+# System Tray
+msgid "Pause"
+msgstr "Pause"
+
+msgid "Resume"
+msgstr "Resume"
+
+msgid "Open Config"
+msgstr "Open Config"
+
+msgid "Open Log Folder"
+msgstr "Open Log Folder"
+
+msgid "Exit"
+msgstr "Exit"
+
+# Notifications
+msgid "Naming Convention Violation"
+msgstr "Naming Convention Violation"
+
+msgid "Validation failed"
+msgstr "Validation failed"
+
+msgid "Validation passed"
+msgstr "Validation passed"
+
+# Processor
+msgid "Processor started"
+msgstr "Processor started"
+
+msgid "Processor stopped"
+msgstr "Processor stopped"
+
+msgid "Processor paused"
+msgstr "Processor paused"
+
+msgid "Processor resumed"
+msgstr "Processor resumed"
+
+msgid "Stability timeout: %s"
+msgstr "Stability timeout: %s"
+
+# ISO 19650 Validation
+msgid "Cannot validate directory."
+msgstr "Cannot validate directory."
+
+msgid "Filename is empty."
+msgstr "Filename is empty."
+
+msgid "Too many fields. Format: Project-Originator-Volume-Level-Type-Role-Number"
+msgstr "Too many fields. Format: Project-Originator-Volume-Level-Type-Role-Number"
+
+msgid "Number format is incorrect. Example: %s"
+msgstr "Number format is incorrect. Example: %s"
+
+msgid "%s code is missing."
+msgstr "%s code is missing."
+
+msgid "%s code is invalid."
+msgstr "%s code is invalid."
+
+msgid "%s code is missing. Allowed codes are [%s]."
+msgstr "%s code is missing. Allowed codes are [%s]."
+
+msgid "%s code is invalid. Allowed codes are [%s]."
+msgstr "%s code is invalid. Allowed codes are [%s]."
+
+msgid "Originator code is missing. Our company code is [%s]."
+msgstr "Originator code is missing. Our company code is [%s]."
+
+msgid "Originator code is incorrect. Our company code is [%s]."
+msgstr "Originator code is incorrect. Our company code is [%s]."
+
+msgid "Type code is missing. Use %s."
+msgstr "Type code is missing. Use %s."
+
+msgid "Type code is incorrect. Use %s."
+msgstr "Type code is incorrect. Use %s."
+
+# Application lifecycle
+msgid "Application initializing"
+msgstr "Application initializing"
+
+msgid "Watch paths: %s"
+msgstr "Watch paths: %s"
+
+msgid "Application starting"
+msgstr "Application starting"
+
+msgid "Application shutdown started"
+msgstr "Application shutdown started"
+
+msgid "Application shutdown complete"
+msgstr "Application shutdown complete"
+
+msgid "Signal received: %s"
+msgstr "Signal received: %s"
+
+msgid "Tray execution error: %s"
+msgstr "Tray execution error: %s"
+
+msgid "Configuration file error: %s"
+msgstr "Configuration file error: %s"
+
+msgid "Application error: %s"
+msgstr "Application error: %s"
+
+msgid "Configuration file not found."
+msgstr "Configuration file not found."

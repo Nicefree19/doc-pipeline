@@ -1,0 +1,128 @@
+# FileHub 한국어 번역
+# Copyright (C) 2026 FileHub Team
+# This file is distributed under the MIT license.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: FileHub 0.1.0\n"
+"Language: ko\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+# Application
+msgid "FileHub"
+msgstr "FileHub"
+
+msgid "File Naming Convention Watcher"
+msgstr "파일 명명 규칙 감시기"
+
+# System Tray
+msgid "Pause"
+msgstr "일시정지"
+
+msgid "Resume"
+msgstr "재개"
+
+msgid "Open Config"
+msgstr "설정 열기"
+
+msgid "Open Log Folder"
+msgstr "로그 폴더 열기"
+
+msgid "Exit"
+msgstr "종료"
+
+# Notifications
+msgid "Naming Convention Violation"
+msgstr "명명 규칙 위반"
+
+msgid "Validation failed"
+msgstr "검증 실패"
+
+msgid "Validation passed"
+msgstr "검증 통과"
+
+# Processor
+msgid "Processor started"
+msgstr "Processor 시작"
+
+msgid "Processor stopped"
+msgstr "Processor 종료"
+
+msgid "Processor paused"
+msgstr "Processor 일시정지"
+
+msgid "Processor resumed"
+msgstr "Processor 재개"
+
+msgid "Stability timeout: %s"
+msgstr "안정성 타임아웃: %s"
+
+# ISO 19650 Validation
+msgid "Cannot validate directory."
+msgstr "디렉토리는 검증할 수 없습니다."
+
+msgid "Filename is empty."
+msgstr "파일명이 비어있습니다."
+
+msgid "Too many fields. Format: Project-Originator-Volume-Level-Type-Role-Number"
+msgstr "필드가 너무 많습니다. 형식: Project-Originator-Volume-Level-Type-Role-Number"
+
+msgid "Number format is incorrect. Example: %s"
+msgstr "Number 형식이 잘못되었습니다. 예: %s"
+
+msgid "%s code is missing."
+msgstr "%s 코드가 누락되었습니다."
+
+msgid "%s code is invalid."
+msgstr "%s 코드가 유효하지 않습니다."
+
+msgid "%s code is missing. Allowed codes are [%s]."
+msgstr "%s 코드가 누락되었습니다. 허용 코드는 [%s]입니다."
+
+msgid "%s code is invalid. Allowed codes are [%s]."
+msgstr "%s 코드가 틀렸습니다. 허용 코드는 [%s]입니다."
+
+msgid "Originator code is missing. Our company code is [%s]."
+msgstr "Originator 코드가 누락되었습니다. 우리 회사 코드는 [%s]입니다."
+
+msgid "Originator code is incorrect. Our company code is [%s]."
+msgstr "Originator 코드가 틀렸습니다. 우리 회사 코드는 [%s]입니다."
+
+msgid "Type code is missing. Use %s."
+msgstr "Type 코드가 누락되었습니다. %s를 사용하세요."
+
+msgid "Type code is incorrect. Use %s."
+msgstr "Type 코드가 틀렸습니다. %s를 사용하세요."
+
+# Application lifecycle
+msgid "Application initializing"
+msgstr "애플리케이션 초기화"
+
+msgid "Watch paths: %s"
+msgstr "감시 경로: %s"
+
+msgid "Application starting"
+msgstr "애플리케이션 시작"
+
+msgid "Application shutdown started"
+msgstr "애플리케이션 종료 시작"
+
+msgid "Application shutdown complete"
+msgstr "애플리케이션 종료 완료"
+
+msgid "Signal received: %s"
+msgstr "시그널 수신: %s"
+
+msgid "Tray execution error: %s"
+msgstr "트레이 실행 오류: %s"
+
+msgid "Configuration file error: %s"
+msgstr "설정 파일 오류: %s"
+
+msgid "Application error: %s"
+msgstr "애플리케이션 오류: %s"
+
+msgid "Configuration file not found."
+msgstr "설정 파일을 찾을 수 없습니다."

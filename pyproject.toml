@@ -1,0 +1,124 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "filehub"
+version = "0.1.0"
+description = "Unified File Management Hub - File Naming Validator & Intelligent Document Storage"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+authors = [
+    {name = "FileHub Team"}
+]
+keywords = [
+    "file", "naming", "convention", "watcher", "windows", "tray",
+    "pdf", "document", "storage", "nas", "iso19650"
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Win32 (MS Windows)",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: Microsoft :: Windows",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+
+# Core dependencies (common)
+dependencies = [
+    "watchdog>=4.0.0",
+    "pystray>=0.19.5",
+    "Pillow>=10.0.0",
+    "win10toast-click>=0.1.2; sys_platform == 'win32'",
+    "PyYAML>=6.0.1",
+    "typer>=0.9.0",
+]
+
+[project.optional-dependencies]
+# PDF processing features (AI-IDSS)
+pdf = [
+    "PyMuPDF>=1.23.0",
+    "opencv-python-headless>=4.8.0",
+    "portalocker>=2.8.0",
+]
+# GUI dependencies
+gui = [
+    "flet>=0.21.0",
+]
+# Full installation (all features)
+full = [
+    "filehub[pdf,gui]",
+]
+# Development dependencies
+dev = [
+    "pytest>=8.0.0",
+    "pytest-cov>=4.1.0",
+    "pyinstaller>=6.0.0",
+    "black>=24.0.0",
+    "ruff>=0.1.0",
+    "mypy>=1.8.0",
+]
+
+[project.scripts]
+filehub = "filehub.__main__:main"
+
+[project.urls]
+Homepage = "https://github.com/filehub/filehub"
+Documentation = "https://github.com/filehub/filehub#readme"
+Repository = "https://github.com/filehub/filehub"
+Issues = "https://github.com/filehub/filehub/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-v --tb=short"
+filterwarnings = [
+    "ignore:builtin type SwigPyPacked has no __module__ attribute:DeprecationWarning",
+    "ignore:builtin type SwigPyObject has no __module__ attribute:DeprecationWarning",
+    "ignore:builtin type swigvarlink has no __module__ attribute:DeprecationWarning",
+]
+
+[tool.black]
+line-length = 100
+target-version = ['py310', 'py311', 'py312']
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "UP",  # pyupgrade
+]
+ignore = [
+    "E501",  # line too long (handled by black)
+]
+
+[tool.coverage.run]
+source = ["src/filehub"]
+omit = ["*/i18n/locales/*"]
+
+[tool.coverage.report]
+fail_under = 70
+show_missing = true
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__",
+    "if TYPE_CHECKING",
+]
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_ignores = true
+ignore_missing_imports = true

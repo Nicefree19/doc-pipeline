@@ -1,0 +1,129 @@
+# FileHub Configuration Example
+
+watcher:
+  paths:
+    - "E:/01.Work/01.EPC/03. PROJECT"
+    - "E:/01.Work/01.EPC/03. PROJECT/04. LG  Display P9 Project"
+    # - "//NAS/Share/Project"  # Network path examples
+  recursive: true
+  use_polling: false      # Set to true for NAS if auto-detection fails
+  poll_interval: 2.0
+
+pipeline:
+  debounce_seconds: 1.0
+  stability_timeout: 20.0
+  stability_rounds: 2
+
+tray:
+  tooltip: "FileHub"
+  minimize_to_tray: true
+
+update:
+  enabled: false
+  # url: "https://example.com/api/v1/update"
+  channel: "stable"
+
+notification:
+  enabled: true
+  duration: 10
+  title: "FileHub"
+  # slack_webhook: "https://hooks.slack.com/services/..."
+  # teams_webhook: "https://outlook.office.com/webhook/..."
+
+logging:
+  level: "INFO"
+  file: "~/logs/filehub.log"
+
+ignore:
+  prefixes: ["~$", "."]
+  extensions: [".tmp", ".bak", ".swp", ".crdownload"]
+
+# Naming Configuration
+naming:
+  enabled: true
+  active_profile: "epc_file_name"
+  
+  profiles:
+    iso19650:
+      type: "iso19650"
+      config:
+        project: ["PROJ", "P5"]
+        originator: ["ABC", "XYZ"]
+        volume: ["ZZ", "01"]
+        level: ["00", "01", "02", "RF"]
+        type: ["DR", "MO", "SP"]
+        role: ["A", "S", "M", "E"]
+
+    epc_file_name:
+      type: "regex"
+      description: "EPC file name: YYYYMMDD_PROJECT_TYPE_DESC_REVn"
+      rules:
+        - pattern: "^(?P<date>\\d{8})_(?P<project>[A-Za-z0-9-]+)_(?P<type>[A-Za-z0-9-]+)_(?P<desc>.+?)_(?P<rev>REV\\d+)$"
+          description: "YYYYMMDD_PROJECT_TYPE_DESC_REVn"
+          example: "20260213_P9_CALC_COLUMN_BASE_REV2"
+    
+    my_custom_naming:
+      type: "regex"
+      description: "Date-based project files"
+      rules:
+        - pattern: "^(?P<date>\\d{8})_(?P<project>\\w+)_(?P<desc>.+)$"
+          description: "YYYYMMDD_Project_Description"
+          example: "20231025_MyProject_Report"
+
+# Automated Actions
+# NOTE:
+# - For `filehub organize --target <PATH>`, use relative `target` values.
+# - Relative targets are resolved under the user-provided target root.
+# - Available variables include: {ext_group}, {ext_no_dot}, {year}, {month}, {day}, and naming fields.
+actions:
+  - name: "Move Valid EPC Files"
+    action: "move"
+    trigger: "valid"
+    target: "02_Validated/{project}/{type}/{year}"
+    conflict: "rename"
+
+  - name: "Move Invalid Files"
+    action: "move"
+    trigger: "invalid"
+    target: "99_Invalid/{today_year}{today_month}{today_day}"
+    conflict: "rename"
+
+  - name: "Fallback By Extension Group"
+    action: "move"
+    trigger: "always"
+    target: "01_ByExtension/{ext_group}/{ext_no_dot}"
+    conflict: "rename"
+
+# Webhook URLs (moved to notification section)
+# slack_webhook: "https://hooks.slack.com/services/..."
+# teams_webhook: "https://outlook.office.com/webhook/..."
+
+# Organization Templates (Custom Rules)
+organize_templates:
+  - name: "epc_structural"
+    description: "EPC Structural Project"
+    ext_groups:
+      drawings: ["dwg", "dxf"]
+      analysis: ["mgb", "out", "msg"]
+      documents: ["pdf", "xlsx", "docx"]
+    rules:
+      - name: "Move Files"
+        action: "move"
+        target: "{ext_group}/{ext_no_dot}"
+        conflict: "rename"
+    folder_template: "epc_standard"
+
+# Project Templates
+templates:
+  - name: "simple_project"
+    description: "Simple project structure"
+    naming_profile: "iso19650"
+    structure:
+      name: "root"
+      children:
+        - name: "docs"
+        - name: "src"
+          files:
+            - name: "main.py"
+              content: "print('Hello World')\n"
+        - name: "tests"

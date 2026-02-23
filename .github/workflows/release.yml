@@ -1,0 +1,140 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release (e.g., 1.0.0)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  quality-gate:
+    name: Quality Gate (Lint & Test)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Run Linting
+        run: |
+          ruff check src/filehub/ tests/
+          # black --check src/filehub/ tests/ # Optional, can be strict
+
+      - name: Run Type Checking
+        run: |
+          mypy src/filehub --ignore-missing-imports
+
+      - name: Run Tests
+        run: |
+          pytest tests/unit/ -v --tb=short
+
+  build:
+    name: Build Windows Executable
+    needs: quality-gate
+    runs-on: windows-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[full]"
+          pip install pyinstaller
+
+      - name: Build executable
+        run: |
+          pyinstaller build.spec --clean --noconfirm
+
+      - name: Create portable archive
+        run: |
+          Compress-Archive -Path dist/filehub -DestinationPath FileHub-Windows-x64.zip
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: FileHub-Windows-x64
+          path: FileHub-Windows-x64.zip
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: FileHub-Windows-x64
+
+      - name: Get version from tag or input
+        id: get_version
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "VERSION=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+            echo "TAG=v${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+            echo "TAG=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          cat << 'EOF' > CHANGELOG.md
+          ## What's New in v${{ steps.get_version.outputs.VERSION }}
+
+          ### Features
+          - FileHub: Unified File Management System
+          - Real-time naming convention validation
+          - System tray integration
+          - Toast notifications with internationalization (English/Korean)
+
+          ### Installation
+          1. Download `FileHub-Windows-x64.zip`
+          2. Extract to desired location
+          3. Run `filehub.exe`
+
+          ### Requirements
+          - Windows 10/11
+
+          ### Configuration
+          Config file is created at `%APPDATA%\FileHub\config.yaml`
+          EOF
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.get_version.outputs.TAG }}
+          name: FileHub v${{ steps.get_version.outputs.VERSION }}
+          body_path: CHANGELOG.md
+          draft: false
+          prerelease: ${{ contains(steps.get_version.outputs.VERSION, 'alpha') || contains(steps.get_version.outputs.VERSION, 'beta') }}
+          files: |
+            FileHub-Windows-x64.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
