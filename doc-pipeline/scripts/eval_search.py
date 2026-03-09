@@ -218,8 +218,9 @@ def main() -> None:
     embeddings_fn = None
     client = None
     try:
+        from doc_pipeline.config import settings
         from doc_pipeline.processor.llm import create_client, get_embeddings
-        client = create_client()
+        client = create_client(settings.gemini.api_key)
         embeddings_fn = get_embeddings
     except Exception:
         print("Warning: No Gemini client available. Using local-only search.")
