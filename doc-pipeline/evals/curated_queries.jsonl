@@ -1,0 +1,15 @@
+{"query": "슬래브 균열 보강 방법", "expected_doc_ids": [], "category": "curated", "tags": ["topic_match"]}
+{"query": "기둥 내진 보강 설계", "expected_doc_ids": [], "category": "curated", "tags": ["topic_match"]}
+{"query": "구조 안전성 검토 의견서", "expected_doc_ids": [], "category": "curated", "tags": ["type_match"]}
+{"query": "철골 접합부 상세", "expected_doc_ids": [], "category": "curated", "tags": ["topic_match"]}
+{"query": "기초 구조 검토", "expected_doc_ids": [], "category": "curated", "tags": ["topic_match"]}
+{"query": "내진 성능 평가 보고서", "expected_doc_ids": [], "category": "curated", "tags": ["type_match"]}
+{"query": "콘크리트 강도 시험 결과", "expected_doc_ids": [], "category": "curated", "tags": ["topic_match"]}
+{"query": "구조설계 변경 사유", "expected_doc_ids": [], "category": "curated", "tags": ["topic_match"]}
+{"query": "심의 지적사항 조치계획", "expected_doc_ids": [], "category": "curated", "tags": ["type_match"]}
+{"query": "프리스트레스 긴장력 계산", "expected_doc_ids": [], "category": "curated", "tags": ["topic_match"]}
+{"query": "보 단면 검토", "expected_doc_ids": [], "category": "curated", "tags": ["topic_match"]}
+{"query": "화성동탄 아파트 구조 검토", "expected_doc_ids": [], "category": "curated", "tags": ["project_match"]}
+{"query": "용역 계약서 계약금액", "expected_doc_ids": [], "category": "curated", "tags": ["type_match"]}
+{"query": "지하주차장 슬래브 처짐", "expected_doc_ids": [], "category": "curated", "tags": ["topic_match"]}
+{"query": "탄소섬유 보강 시공", "expected_doc_ids": [], "category": "curated", "tags": ["topic_match"]}
