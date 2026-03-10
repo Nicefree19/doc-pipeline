@@ -33,6 +33,17 @@ logger = logging.getLogger(__name__)
 _Client = Any
 
 
+def _ocr_worker(q: multiprocessing.Queue, eng_name: str, path: str) -> None:
+    """Module-level OCR worker for multiprocessing (Windows pickle compat)."""
+    try:
+        from doc_pipeline.processor.ocr import get_engine
+        engine = get_engine(eng_name)
+        result = engine.process(Path(path))
+        q.put(result.model_dump())
+    except Exception as exc:
+        q.put({"error": str(exc)})
+
+
 def _run_ocr_isolated(
     engine_name: str,
     pdf_path: Path,
@@ -43,18 +54,8 @@ def _run_ocr_isolated(
     Returns:
         OCRResult on success, None on crash/timeout.
     """
-
-    def _worker(q: multiprocessing.Queue, eng_name: str, path: str) -> None:
-        try:
-            from doc_pipeline.processor.ocr import get_engine
-            engine = get_engine(eng_name)
-            result = engine.process(Path(path))
-            q.put(result.model_dump())
-        except Exception as exc:
-            q.put({"error": str(exc)})
-
     q: multiprocessing.Queue = multiprocessing.Queue()
-    proc = multiprocessing.Process(target=_worker, args=(q, engine_name, str(pdf_path)))
+    proc = multiprocessing.Process(target=_ocr_worker, args=(q, engine_name, str(pdf_path)))
     proc.start()
     proc.join(timeout)
 
