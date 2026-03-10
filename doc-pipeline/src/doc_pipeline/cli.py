@@ -232,6 +232,9 @@ def cmd_embed(args: argparse.Namespace) -> None:
             logger.error("Document not found: %s", args.doc_id)
             return
         docs = [doc]
+    elif getattr(args, "force", False):
+        docs = registry.list_documents(limit=args.limit or None, offset=0)
+        logger.info("Force mode: targeting all %d documents", len(docs))
     else:
         # --all: query unembedded documents directly via SQL
         docs = registry.list_unembedded(limit=args.limit)
@@ -635,6 +638,7 @@ def main() -> None:
     p_embed.add_argument("--grade", choices=["B", "C"], default="B", help="Embedding grade (default: B)")
     p_embed.add_argument("--limit", type=int, default=None, help="Max documents to embed")
     p_embed.add_argument("--dry-run", action="store_true", help="Show targets without embedding")
+    p_embed.add_argument("--force", action="store_true", help="Re-embed all documents (ignore embedded_at)")
 
     # reclassify
     p_reclass = sub.add_parser("reclassify", help="Reclassify registered documents")
