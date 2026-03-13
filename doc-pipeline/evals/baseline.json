@@ -1,28 +1,206 @@
 {
-  "total_queries": 159,
-  "Hit@1": 0.6918,
-  "Hit@3": 0.7296,
-  "Hit@5": 0.7358,
-  "MRR": 0.7122,
-  "nDCG@5": 0.7141,
-  "judged_query_count": 159,
-  "skipped_query_count": 1,
+  "total_queries": 195,
+  "Hit@1": 0.7026,
+  "Hit@3": 0.7231,
+  "Hit@5": 0.7333,
+  "MRR": 0.7171,
+  "nDCG@5": 0.7041,
+  "judged_query_count": 195,
+  "skipped_query_count": 0,
   "by_category": {
     "synthetic": {
       "total_queries": 145,
-      "Hit@1": 0.7586,
-      "Hit@3": 0.8,
-      "Hit@5": 0.8069,
-      "MRR": 0.7787,
-      "nDCG@5": 0.783
+      "Hit@1": 0.7655,
+      "Hit@3": 0.7862,
+      "Hit@5": 0.7931,
+      "MRR": 0.7764,
+      "nDCG@5": 0.7778
     },
     "curated": {
-      "total_queries": 14,
-      "Hit@1": 0.0,
-      "Hit@3": 0.0,
-      "Hit@5": 0.0,
-      "MRR": 0.0,
-      "nDCG@5": 0.0
+      "total_queries": 50,
+      "Hit@1": 0.52,
+      "Hit@3": 0.54,
+      "Hit@5": 0.56,
+      "MRR": 0.535,
+      "nDCG@5": 0.4905
     }
+  },
+  "by_intent": {
+    "unknown": {
+      "total_queries": 145,
+      "Hit@1": 0.7655,
+      "Hit@3": 0.7862,
+      "Hit@5": 0.7931,
+      "MRR": 0.7764,
+      "nDCG@5": 0.7778
+    },
+    "technical_qa": {
+      "total_queries": 13,
+      "Hit@1": 0.3077,
+      "Hit@3": 0.3077,
+      "Hit@5": 0.3077,
+      "MRR": 0.3077,
+      "nDCG@5": 0.2184
+    },
+    "contract_lookup": {
+      "total_queries": 10,
+      "Hit@1": 0.5,
+      "Hit@3": 0.5,
+      "Hit@5": 0.5,
+      "MRR": 0.5,
+      "nDCG@5": 0.4581
+    },
+    "method_docs_lookup": {
+      "total_queries": 11,
+      "Hit@1": 0.4545,
+      "Hit@3": 0.5455,
+      "Hit@5": 0.6364,
+      "MRR": 0.5227,
+      "nDCG@5": 0.4641
+    },
+    "project_lookup": {
+      "total_queries": 16,
+      "Hit@1": 0.75,
+      "Hit@3": 0.75,
+      "Hit@5": 0.75,
+      "MRR": 0.75,
+      "nDCG@5": 0.75
+    }
+  },
+  "sections": {
+    "overall": {
+      "total_queries": 195,
+      "Hit@1": 0.7026,
+      "Hit@3": 0.7231,
+      "Hit@5": 0.7333,
+      "MRR": 0.7171,
+      "nDCG@5": 0.7041,
+      "input_queries": 195,
+      "judged_queries": 195,
+      "ungrounded_queries": 0
+    },
+    "synthetic": {
+      "total_queries": 145,
+      "Hit@1": 0.7655,
+      "Hit@3": 0.7862,
+      "Hit@5": 0.7931,
+      "MRR": 0.7764,
+      "nDCG@5": 0.7778
+    },
+    "curated": {
+      "total_queries": 50,
+      "Hit@1": 0.52,
+      "Hit@3": 0.54,
+      "Hit@5": 0.56,
+      "MRR": 0.535,
+      "nDCG@5": 0.4905
+    },
+    "judged_only": {
+      "total_queries": 195,
+      "Hit@1": 0.7026,
+      "Hit@3": 0.7231,
+      "Hit@5": 0.7333,
+      "MRR": 0.7171,
+      "nDCG@5": 0.7041
+    },
+    "ungrounded": {
+      "total_queries": 0,
+      "by_category": {},
+      "by_intent": {}
+    }
+  },
+  "false_positives": {
+    "curated_top_docs": [
+      {
+        "doc_id": "69b08dab",
+        "count": 12,
+        "doc_type": "계약서",
+        "doc_type_ext": "계약서",
+        "project_name": "평택 전자 Precon 구조설계 (복합동",
+        "year": 2025,
+        "file_name_original": "D25128-128(삼성이앤에이-평택 전자 Precon 구조설계 (복합동)).pdf"
+      },
+      {
+        "doc_id": "985cd1b7",
+        "count": 10,
+        "doc_type": "계약서",
+        "doc_type_ext": "계약서",
+        "project_name": "여주시 강천면 걸은리 877-3번지 외 3필지 신축공사 데크플레이트 구조검토",
+        "year": 2025,
+        "file_name_original": "D25076-076(성우스틸-여주시 강천면 걸은리 877-3번지 외 3필지 신축공사 데크플레이트 구조검토).pdf"
+      },
+      {
+        "doc_id": "86d70728",
+        "count": 10,
+        "doc_type": "계약서",
+        "doc_type_ext": "계약서",
+        "project_name": "인천 동구 송림동 송림6구역 재개발정비사업 데크플레이트 구조검토",
+        "year": 2025,
+        "file_name_original": "D25022-022(성지제강-인천 동구 송림동 송림6구역 재개발정비사업 데크플레이트 구조검토).pdf"
+      },
+      {
+        "doc_id": "e891426e",
+        "count": 9,
+        "doc_type": "계약서",
+        "doc_type_ext": "계약서",
+        "project_name": "천안시 성정동 공공지원 임대주택 신축공사 현장지원",
+        "year": 2025,
+        "file_name_original": "D25066-066(이랜드건설-천안시 성정동 공공지원 임대주택 신축공사 현장지원).pdf"
+      },
+      {
+        "doc_id": "b3e04eb8",
+        "count": 6,
+        "doc_type": "계약서",
+        "doc_type_ext": "계약서",
+        "project_name": "용답동 주택재개발 정비사업 신축공사 - 데크플레이트",
+        "year": 2025,
+        "file_name_original": "D25064-064(네오텍-용답동 주택재개발 정비사업 신축공사 - 데크플레이트).pdf"
+      },
+      {
+        "doc_id": "c97bac5f",
+        "count": 4,
+        "doc_type": "계약서",
+        "doc_type_ext": "계약서",
+        "project_name": "대림3동 공공복합청사 데크플레이트 구조계산",
+        "year": 2025,
+        "file_name_original": "D25092-092(에스와이스틸텍-대림3동 공공복합청사 데크플레이트 구조계산).pdf"
+      },
+      {
+        "doc_id": "61ab14c8",
+        "count": 4,
+        "doc_type": "계약서",
+        "doc_type_ext": "계약서",
+        "project_name": "서부장애인복지관 건립공사 GC DECK 구조검토용역",
+        "year": 2025,
+        "file_name_original": "D25109-109(디엔에프-서부장애인복지관 건립공사 GC DECK 구조검토용역).pdf"
+      },
+      {
+        "doc_id": "8fd80d59",
+        "count": 3,
+        "doc_type": "계약서",
+        "doc_type_ext": "계약서",
+        "project_name": "수색, DMC역 특별계획구역10 주거복합 신축공사 DECK PLATE 구조검토 용역",
+        "year": 2025,
+        "file_name_original": "D25033-033(윈하이텍-수색, DMC역 특별계획구역10 주거복합 신축공사 DECK PLATE 구조검토 용역).pdf"
+      },
+      {
+        "doc_id": "1f695100",
+        "count": 3,
+        "doc_type": "계약서",
+        "doc_type_ext": "계약서",
+        "project_name": "필리핀 전기 P6 신축공사 구조설계(구조검토",
+        "year": 2025,
+        "file_name_original": "D25082-082(삼성이앤에이-필리핀 전기 P6 신축공사 구조설계(구조검토)).pdf"
+      },
+      {
+        "doc_id": "8ca111e2",
+        "count": 3,
+        "doc_type": "공법자료",
+        "doc_type_ext": "",
+        "project_name": "",
+        "year": 0,
+        "file_name_original": "201208 장안동 전이보 TSC 변환설계 제안서-EPC.pptx"
+      }
+    ]
   }
 }

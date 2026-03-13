@@ -130,6 +130,35 @@ class FTSSettings(BaseModel):
     )
 
 
+class AgentSettings(BaseModel):
+    """PydanticAI agent configuration. Disabled by default (feature toggle)."""
+
+    enabled: bool = Field(
+        default_factory=lambda: os.getenv("AGENT_ENABLED", "false").lower() == "true"
+    )
+    model: str = Field(
+        default_factory=lambda: os.getenv("AGENT_MODEL", "google-gla:gemini-2.0-flash")
+    )
+    temperature: float = Field(
+        default_factory=lambda: float(os.getenv("AGENT_TEMPERATURE", "0.3"))
+    )
+    max_retries: int = Field(
+        default_factory=lambda: int(os.getenv("AGENT_MAX_RETRIES", "2"))
+    )
+
+
+class ObservabilitySettings(BaseModel):
+    """OpenTelemetry observability configuration."""
+
+    otel_enabled: bool = Field(
+        default_factory=lambda: os.getenv("OTEL_ENABLED", "false").lower() == "true"
+    )
+    otel_endpoint: str = Field(
+        default_factory=lambda: os.getenv("OTEL_ENDPOINT", "http://localhost:4317")
+    )
+    service_name: str = "doc-pipeline"
+
+
 class Settings(BaseModel):
     gemini: GeminiSettings = Field(default_factory=GeminiSettings)
     sheets: GoogleSheetsSettings = Field(default_factory=GoogleSheetsSettings)
@@ -144,6 +173,8 @@ class Settings(BaseModel):
     registry: RegistrySettings = Field(default_factory=RegistrySettings)
     classifier: ClassifierSettings = Field(default_factory=ClassifierSettings)
     fts: FTSSettings = Field(default_factory=FTSSettings)
+    agents: AgentSettings = Field(default_factory=AgentSettings)
+    observability: ObservabilitySettings = Field(default_factory=ObservabilitySettings)
 
     def validate_for_processing(self) -> list[str]:
         """Check required settings and return list of warnings (empty = all OK)."""

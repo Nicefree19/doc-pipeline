@@ -103,6 +103,28 @@ class TestProjectMatching:
         result = p.parse("화성동탄 구조검토")
         assert result.project == ""
 
+    def test_reverse_containment_prefers_meaningful_tokens(self) -> None:
+        """Generic technical tokens should not outweigh unique project tokens."""
+        p = QueryParser(
+            known_projects={
+                "국립충주박물관 DECK PLATE 구조검토 용역",
+                "여주시 강천면 걸은리 DECK PLATE 구조검토 용역",
+            },
+        )
+        result = p.parse("국립충주박물관 데크플레이트")
+        assert result.project == "국립충주박물관 DECK PLATE 구조검토 용역"
+
+    def test_generic_technical_query_does_not_become_project(self) -> None:
+        """Topic-only queries should not be coerced into a project name."""
+        p = QueryParser(
+            known_projects={
+                "안양동 비구조요소 내진설계 구조검토 용역",
+                "화성동탄 구조검토",
+            },
+        )
+        result = p.parse("비구조요소 내진설계 구조검토")
+        assert result.project == ""
+
 
 # ---------------------------------------------------------------------------
 # Document type matching

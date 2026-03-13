@@ -18,8 +18,9 @@ Score formula::
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
+from doc_pipeline.search.profiles import SearchProfile, get_doc_type_prior
 from doc_pipeline.storage.vectordb import SearchResult
 
 
@@ -68,6 +69,7 @@ class SearchAggregator:
         query_project: str = "",
         query_year: int = 0,
         query_doc_type: str = "",
+        search_profile: SearchProfile = "auto",
         fts_doc_scores: dict[str, float] | None = None,
     ) -> list[DocumentResult]:
         """Aggregate chunk results into document-level results.
@@ -106,11 +108,19 @@ class SearchAggregator:
             metadata_bonus = self._metadata_bonus(
                 best, query_project, query_year, query_doc_type,
             )
+            type_prior = 0.0
+            if search_profile != "auto":
+                type_prior = get_doc_type_prior(
+                    best.doc_type,
+                    doc_type_ext=best.doc_type_ext,
+                    profile=search_profile,
+                )
 
             doc_score = (
                 best_score * self.best_weight
                 + avg_top3 * self.avg_top3_weight
                 + metadata_bonus * self.metadata_weight
+                + type_prior
             )
 
             # Add doc-level FTS bonus (if available)

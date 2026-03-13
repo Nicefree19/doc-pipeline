@@ -143,18 +143,53 @@
 {"query": "한남동 연립주택 신축공사 지하1층 외벽 두께 변경 검토", "expected_doc_ids": ["862c02d5"], "category": "synthetic", "tags": ["project_match"]}
 {"query": "필리핀 전기 P6 신축공사 구조설계(구조검토 계약서", "expected_doc_ids": ["1f695100"], "category": "synthetic", "tags": ["project_type_match"]}
 {"query": "필리핀 전기 P6 신축공사 구조설계(구조검토", "expected_doc_ids": ["1f695100"], "category": "synthetic", "tags": ["project_match"]}
-{"query": "슬래브 균열 보강 방법", "expected_doc_ids": [], "category": "curated", "tags": ["topic_match"]}
-{"query": "기둥 내진 보강 설계", "expected_doc_ids": [], "category": "curated", "tags": ["topic_match"]}
-{"query": "구조 안전성 검토 의견서", "expected_doc_ids": [], "category": "curated", "tags": ["type_match"]}
-{"query": "철골 접합부 상세", "expected_doc_ids": [], "category": "curated", "tags": ["topic_match"]}
-{"query": "기초 구조 검토", "expected_doc_ids": [], "category": "curated", "tags": ["topic_match"]}
-{"query": "내진 성능 평가 보고서", "expected_doc_ids": [], "category": "curated", "tags": ["type_match"]}
-{"query": "콘크리트 강도 시험 결과", "expected_doc_ids": [], "category": "curated", "tags": ["topic_match"]}
-{"query": "구조설계 변경 사유", "expected_doc_ids": [], "category": "curated", "tags": ["topic_match"]}
-{"query": "심의 지적사항 조치계획", "expected_doc_ids": [], "category": "curated", "tags": ["type_match"]}
-{"query": "프리스트레스 긴장력 계산", "expected_doc_ids": [], "category": "curated", "tags": ["topic_match"]}
-{"query": "보 단면 검토", "expected_doc_ids": [], "category": "curated", "tags": ["topic_match"]}
-{"query": "화성동탄 아파트 구조 검토", "expected_doc_ids": [], "category": "curated", "tags": ["project_match"]}
-{"query": "용역 계약서 계약금액", "expected_doc_ids": [], "category": "curated", "tags": ["type_match"]}
-{"query": "지하주차장 슬래브 처짐", "expected_doc_ids": [], "category": "curated", "tags": ["topic_match"]}
-{"query": "탄소섬유 보강 시공", "expected_doc_ids": [], "category": "curated", "tags": ["topic_match"]}
+{"query_id": 0, "query": "슬래브 안전성 검토", "expected_doc_ids": [], "category": "curated", "intent": "technical_qa", "tags": ["technical_qa"]}
+{"query_id": 1, "query": "비구조요소 내진설계 구조검토", "expected_doc_ids": [], "category": "curated", "intent": "technical_qa", "tags": ["technical_qa"]}
+{"query_id": 2, "query": "구조 안전성 검토", "expected_doc_ids": [], "category": "curated", "intent": "technical_qa", "tags": ["technical_qa"]}
+{"query_id": 3, "query": "철골 접합부 구조검토", "expected_doc_ids": [], "category": "curated", "intent": "technical_qa", "tags": ["technical_qa"]}
+{"query_id": 4, "query": "기초 구조 검토", "expected_doc_ids": [], "category": "curated", "intent": "technical_qa", "tags": ["technical_qa"]}
+{"query_id": 5, "query": "내진 성능 평가", "expected_doc_ids": [], "category": "curated", "intent": "technical_qa", "tags": ["technical_qa"]}
+{"query_id": 6, "query": "콘크리트 채움 합성보 접합부", "expected_doc_ids": [], "category": "curated", "intent": "technical_qa", "tags": ["technical_qa"]}
+{"query_id": 7, "query": "구조설계 변경 사유", "expected_doc_ids": [], "category": "curated", "intent": "technical_qa", "tags": ["technical_qa"]}
+{"query_id": 8, "query": "심의 지적사항 조치계획", "expected_doc_ids": [], "category": "curated", "intent": "technical_qa", "tags": ["technical_qa"]}
+{"query_id": 9, "query": "데크플레이트 구조계산", "expected_doc_ids": [], "category": "curated", "intent": "technical_qa", "tags": ["technical_qa"]}
+{"query_id": 10, "query": "보 단면 검토", "expected_doc_ids": [], "category": "curated", "intent": "technical_qa", "tags": ["technical_qa"]}
+{"query_id": 11, "query": "화성동탄 아파트 구조 검토", "expected_doc_ids": [], "category": "curated", "intent": "technical_qa", "tags": ["technical_qa"]}
+{"query_id": 12, "query": "용역 계약서 계약금액", "expected_doc_ids": [], "category": "curated", "intent": "contract_lookup", "tags": ["contract_lookup"]}
+{"query_id": 13, "query": "지하주차장 슬래브 변경", "expected_doc_ids": [], "category": "curated", "intent": "technical_qa", "tags": ["technical_qa"]}
+{"query_id": 14, "query": "TSC 공법 제안", "expected_doc_ids": [], "category": "curated", "intent": "method_docs_lookup", "tags": ["method_docs_lookup"]}
+{"query_id": 15, "query": "홍천읍 갈마곡리 슬래브 변경 구조검토", "expected_doc_ids": [], "category": "curated", "intent": "project_lookup", "tags": ["project_lookup"]}
+{"query_id": 16, "query": "조선호텔 소공사옥 플랫 슬래브", "expected_doc_ids": [], "category": "curated", "intent": "project_lookup", "tags": ["project_lookup"]}
+{"query_id": 17, "query": "청계리버뷰자이 비구조 내진설계", "expected_doc_ids": [], "category": "curated", "intent": "project_lookup", "tags": ["project_lookup"]}
+{"query_id": 18, "query": "로얄캐닌 타워크레인 기초", "expected_doc_ids": [], "category": "curated", "intent": "project_lookup", "tags": ["project_lookup"]}
+{"query_id": 19, "query": "제주 더샵 연동애비뉴 기초보강재", "expected_doc_ids": [], "category": "curated", "intent": "project_lookup", "tags": ["project_lookup"]}
+{"query_id": 20, "query": "에이피로지스틱스 접합부", "expected_doc_ids": [], "category": "curated", "intent": "project_lookup", "tags": ["project_lookup"]}
+{"query_id": 21, "query": "보정종합복지회관 철골보 오시공", "expected_doc_ids": [], "category": "curated", "intent": "project_lookup", "tags": ["project_lookup"]}
+{"query_id": 22, "query": "국립충주박물관 데크플레이트", "expected_doc_ids": [], "category": "curated", "intent": "project_lookup", "tags": ["project_lookup"]}
+{"query_id": 23, "query": "대림3동 공공복합청사 데크플레이트", "expected_doc_ids": [], "category": "curated", "intent": "project_lookup", "tags": ["project_lookup"]}
+{"query_id": 24, "query": "P5-PJT 복합동 전환설계 구조용역", "expected_doc_ids": [], "category": "curated", "intent": "project_lookup", "tags": ["project_lookup"]}
+{"query_id": 25, "query": "고려대학교 자연계 중앙광장 VE 제안", "expected_doc_ids": [], "category": "curated", "intent": "project_lookup", "tags": ["project_lookup"]}
+{"query_id": 26, "query": "오리온 진천신공장 구조VE", "expected_doc_ids": [], "category": "curated", "intent": "project_lookup", "tags": ["project_lookup"]}
+{"query_id": 27, "query": "송림6구역 데크플레이트 구조검토", "expected_doc_ids": [], "category": "curated", "intent": "project_lookup", "tags": ["project_lookup"]}
+{"query_id": 28, "query": "여주시 강천면 걸은리 데크플레이트", "expected_doc_ids": [], "category": "curated", "intent": "project_lookup", "tags": ["project_lookup"]}
+{"query_id": 29, "query": "수색 DMC역 특별계획구역10 DECK PLATE", "expected_doc_ids": [], "category": "curated", "intent": "project_lookup", "tags": ["project_lookup"]}
+{"query_id": 30, "query": "서부장애인복지관 GC DECK", "expected_doc_ids": [], "category": "curated", "intent": "project_lookup", "tags": ["project_lookup"]}
+{"query_id": 31, "query": "구조용역 계약서", "expected_doc_ids": [], "category": "curated", "intent": "contract_lookup", "tags": ["contract_lookup"]}
+{"query_id": 32, "query": "데크플레이트 구조계산 용역 계약서", "expected_doc_ids": [], "category": "curated", "intent": "contract_lookup", "tags": ["contract_lookup"]}
+{"query_id": 33, "query": "비구조 내진설계 계약서", "expected_doc_ids": [], "category": "curated", "intent": "contract_lookup", "tags": ["contract_lookup"]}
+{"query_id": 34, "query": "구조설계변경 계약서", "expected_doc_ids": [], "category": "curated", "intent": "contract_lookup", "tags": ["contract_lookup"]}
+{"query_id": 35, "query": "접합부 구조검토 계약서", "expected_doc_ids": [], "category": "curated", "intent": "contract_lookup", "tags": ["contract_lookup"]}
+{"query_id": 36, "query": "플랫 슬래브 안전성 검토 계약서", "expected_doc_ids": [], "category": "curated", "intent": "contract_lookup", "tags": ["contract_lookup"]}
+{"query_id": 37, "query": "기초보강재 구조검토 계약서", "expected_doc_ids": [], "category": "curated", "intent": "contract_lookup", "tags": ["contract_lookup"]}
+{"query_id": 38, "query": "철골보 오시공 검토 계약서", "expected_doc_ids": [], "category": "curated", "intent": "contract_lookup", "tags": ["contract_lookup"]}
+{"query_id": 39, "query": "DECK PLATE 구조검토 용역 계약서", "expected_doc_ids": [], "category": "curated", "intent": "contract_lookup", "tags": ["contract_lookup"]}
+{"query_id": 40, "query": "TSC 공법소개 요약자료", "expected_doc_ids": [], "category": "curated", "intent": "method_docs_lookup", "tags": ["method_docs_lookup"]}
+{"query_id": 41, "query": "SS-SPLICE 공법소개자료", "expected_doc_ids": [], "category": "curated", "intent": "method_docs_lookup", "tags": ["method_docs_lookup"]}
+{"query_id": 42, "query": "TSC 합성보 자료", "expected_doc_ids": [], "category": "curated", "intent": "method_docs_lookup", "tags": ["method_docs_lookup"]}
+{"query_id": 43, "query": "내화구조 인정서 2시간", "expected_doc_ids": [], "category": "curated", "intent": "method_docs_lookup", "tags": ["method_docs_lookup"]}
+{"query_id": 44, "query": "내화패널 소개자료", "expected_doc_ids": [], "category": "curated", "intent": "method_docs_lookup", "tags": ["method_docs_lookup"]}
+{"query_id": 45, "query": "구조분야 VE 제안", "expected_doc_ids": [], "category": "curated", "intent": "method_docs_lookup", "tags": ["method_docs_lookup"]}
+{"query_id": 46, "query": "아모레퍼시픽 제안서", "expected_doc_ids": [], "category": "curated", "intent": "method_docs_lookup", "tags": ["method_docs_lookup"]}
+{"query_id": 47, "query": "안산시 원시동 물류센터 제안서", "expected_doc_ids": [], "category": "curated", "intent": "method_docs_lookup", "tags": ["method_docs_lookup"]}
+{"query_id": 48, "query": "김포 학운 물류센터 램프구간 제안서", "expected_doc_ids": [], "category": "curated", "intent": "method_docs_lookup", "tags": ["method_docs_lookup"]}
+{"query_id": 49, "query": "삼성물산 T-PJT CFT TSC 공법 제안서", "expected_doc_ids": [], "category": "curated", "intent": "method_docs_lookup", "tags": ["method_docs_lookup"]}

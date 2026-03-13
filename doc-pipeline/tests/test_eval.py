@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
@@ -15,6 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from evals.generate_eval_set import generate_eval_set, read_jsonl, write_jsonl
 from scripts.eval_search import (
     EvalReport,
+    evaluate,
     hit_at_k,
     ndcg_at_k,
     reciprocal_rank,
@@ -128,6 +130,54 @@ class TestEvalReport:
         assert "details" in d
         assert len(d["details"]) == 1
         assert d["details"][0]["query"] == "test"
+
+    def test_summary_by_intent(self) -> None:
+        report = EvalReport()
+        report.add("q1", ["a"], ["a"], "curated", ["tag"], "technical_qa")
+        report.add("q2", ["b"], ["x"], "curated", ["tag"], "technical_qa")
+        report.add("q3", ["c"], ["c"], "curated", ["tag"], "contract_lookup")
+        by_intent = report.summary_by_field("intent")
+        assert by_intent["technical_qa"]["total_queries"] == 2
+        assert by_intent["contract_lookup"]["Hit@1"] == 1.0
+
+    def test_false_positive_docs_counts_misses(self) -> None:
+        report = EvalReport()
+        report.add("q1", ["d1", "d2"], ["x"], "curated", ["tag"], "technical_qa")
+        report.add("q2", ["d1", "d3"], ["y"], "curated", ["tag"], "technical_qa")
+        report.add("q3", ["z"], ["z"], "curated", ["tag"], "technical_qa")
+        rows = report.false_positive_docs(category="curated", top_n=2)
+        assert rows[0]["doc_id"] == "d1"
+        assert rows[0]["count"] == 2
+
+
+class TestEvaluate:
+    def test_batches_embedding_requests(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        calls: list[list[str]] = []
+
+        def fake_get_embeddings(_client, texts: list[str]) -> list[list[float]]:
+            calls.append(list(texts))
+            return [[0.1, 0.2, 0.3] for _ in texts]
+
+        def fake_unified_search(_store, _query_text, _query_embedding, **_kwargs):
+            return [SimpleNamespace(doc_id="doc1")], None
+
+        monkeypatch.setattr("doc_pipeline.search.unified_search", fake_unified_search)
+
+        queries = [
+            {"query": "q1", "expected_doc_ids": ["doc1"], "category": "synthetic", "tags": []},
+            {"query": "q2", "expected_doc_ids": ["doc1"], "category": "synthetic", "tags": []},
+            {"query": "q3", "expected_doc_ids": [], "category": "curated", "tags": []},
+        ]
+
+        report = evaluate(
+            queries,
+            store=object(),
+            get_embeddings_fn=fake_get_embeddings,
+            client=object(),
+        )
+
+        assert report.summary()["total_queries"] == 2
+        assert calls == [["q1", "q2"]]
 
 
 # ---------------------------------------------------------------------------

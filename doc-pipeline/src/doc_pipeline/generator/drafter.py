@@ -227,11 +227,36 @@ def generate_draft(
         missing_keys = [k for k in all_section_keys if k not in fields]
 
         if missing_keys:
-            batch_result = _generate_sections_batch(
-                llm_client, missing_keys, context, references_text,
-            )
-            if batch_result:
-                fields.update(batch_result)
+            # --- PydanticAI agent path (feature toggle) ---
+            if settings.agents.enabled:
+                try:
+                    from doc_pipeline.agents.draft_agent import get_draft_agent
+                    from doc_pipeline.agents.deps import DraftDeps
+
+                    deps = DraftDeps(
+                        template_type=doc_type,
+                        project_name=project_name,
+                        references_text=references_text,
+                        references=ref_data,
+                        sections=missing_keys,
+                    )
+                    agent = get_draft_agent()
+                    prompt = f"{project_name} {issue} — 섹션: {', '.join(missing_keys)}"
+                    result = agent.run_sync(prompt, deps=deps)
+                    for section in result.output.sections:
+                        if section.title in missing_keys:
+                            fields[section.title] = section.content
+                except Exception as exc:
+                    logger.warning("Draft agent failed, falling back to legacy: %s", exc)
+
+            # --- Legacy batch generation (fallback or non-agent mode) ---
+            still_missing_pre = [k for k in missing_keys if k not in fields]
+            if still_missing_pre:
+                batch_result = _generate_sections_batch(
+                    llm_client, still_missing_pre, context, references_text,
+                )
+                if batch_result:
+                    fields.update(batch_result)
 
             # Check for any keys still missing after batch
             still_missing = [k for k in missing_keys if k not in fields]

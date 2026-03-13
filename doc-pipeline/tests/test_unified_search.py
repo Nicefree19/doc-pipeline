@@ -7,6 +7,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from doc_pipeline.models.schemas import ChunkRecord, DocType, SecurityGrade
+from doc_pipeline.search.profiles import resolve_search_profile
 from doc_pipeline.search.query_parser import QueryParser
 from doc_pipeline.search.unified import unified_search
 from doc_pipeline.storage.vectordb import ChunkFTS, VectorStore
@@ -269,3 +270,70 @@ class TestUnifiedSearchIntegration:
         assert len(results_with_fts) >= 2
         assert results_with_fts[0].doc_id == "d2", "FTS bonus should push d2 to rank 1"
         registry.search_fts.assert_called_once()
+
+    def test_technical_qa_profile_prefers_opinion(self, tmp_chromadb: str) -> None:
+        """technical_qa should prefer 의견서 over 계약서 when scores are tied."""
+        store = VectorStore(persist_dir=tmp_chromadb)
+        contract = _make_chunk("c1", doc_id="contract", text="슬래브 균열 검토", doc_type_ext="계약서")
+        opinion = _make_chunk("c2", doc_id="opinion", text="슬래브 균열 검토", doc_type_ext="구조검토의견서")
+        contract.doc_type = DocType.CONTRACT
+        opinion.doc_type = DocType.OPINION
+        store.add_chunks([contract, opinion], [[0.5] * 10, [0.5] * 10])
+
+        results, _ = unified_search(
+            store,
+            "슬래브 균열 검토",
+            [0.5] * 10,
+            n_results=5,
+            search_profile="technical_qa",
+        )
+        assert results[0].doc_id == "opinion"
+
+    def test_contract_lookup_profile_prefers_contract(self, tmp_chromadb: str) -> None:
+        """contract_lookup should rank 계약서 above non-contract docs."""
+        store = VectorStore(persist_dir=tmp_chromadb)
+        contract = _make_chunk("c1", doc_id="contract", text="용역 계약서 계약금액", doc_type_ext="계약서")
+        method = _make_chunk("c2", doc_id="method", text="용역 계약서 계약금액")
+        contract.doc_type = DocType.CONTRACT
+        method.doc_type = DocType.METHOD_DOC
+        store.add_chunks([contract, method], [[0.5] * 10, [0.5] * 10])
+
+        results, _ = unified_search(
+            store,
+            "용역 계약서 계약금액",
+            [0.5] * 10,
+            n_results=5,
+            search_profile="contract_lookup",
+        )
+        assert results[0].doc_id == "contract"
+
+    def test_method_docs_profile_prefers_method_doc(self, tmp_chromadb: str) -> None:
+        """method_docs should rank 공법자료 docs above contracts."""
+        store = VectorStore(persist_dir=tmp_chromadb)
+        contract = _make_chunk("c1", doc_id="contract", text="TSC 공법 제안", doc_type_ext="계약서")
+        method = _make_chunk("c2", doc_id="method", text="TSC 공법 제안")
+        contract.doc_type = DocType.CONTRACT
+        method.doc_type = DocType.METHOD_DOC
+        store.add_chunks([contract, method], [[0.5] * 10, [0.5] * 10])
+
+        results, _ = unified_search(
+            store,
+            "TSC 공법 제안",
+            [0.5] * 10,
+            n_results=5,
+            search_profile="method_docs",
+        )
+        assert results[0].doc_id == "method"
+
+    def test_auto_profile_prefers_project_lookup_for_project_plus_method_topic(self) -> None:
+        """Project-bearing deck queries should stay in project lookup mode."""
+        parser = QueryParser(known_projects={"국립충주박물관 DECK PLATE 구조검토 용역"})
+        parsed = parser.parse("국립충주박물관 데크플레이트")
+        assert parsed.project == "국립충주박물관 DECK PLATE 구조검토 용역"
+        assert resolve_search_profile("국립충주박물관 데크플레이트", parsed=parsed) == "project_lookup"
+
+    def test_auto_profile_keeps_method_docs_for_proposal_queries(self) -> None:
+        """Proposal/material phrasing should stay in method_docs mode."""
+        parser = QueryParser(known_projects={"아모레퍼시픽 사옥"})
+        parsed = parser.parse("아모레퍼시픽 제안서")
+        assert resolve_search_profile("아모레퍼시픽 제안서", parsed=parsed) == "method_docs"

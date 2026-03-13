@@ -19,6 +19,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Literal
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -156,6 +157,15 @@ async def lifespan(app: FastAPI):
         if app.state.vector_store is None:
             logger.critical("VectorStore unavailable in production — aborting")
             raise SystemExit(1)
+
+    # OpenTelemetry instrumentation (optional)
+    if settings.observability.otel_enabled:
+        try:
+            from doc_pipeline.agents.instrumentation import setup_otel
+
+            setup_otel(settings.observability)
+        except Exception as exc:
+            logger.warning("OTel init failed (disabled): %s", exc)
 
     yield
 
@@ -662,6 +672,9 @@ class SearchRequest(BaseModel):
     doc_type_filter: str = "전체"
     category_filter: str = "전체"
     doc_type_ext_filter: str = "전체"
+    search_profile: Literal[
+        "auto", "technical_qa", "project_lookup", "contract_lookup", "method_docs"
+    ] = "auto"
 
 
 _MAX_CONTEXT_CHARS = 24_000  # Budget for RAG context to limit Gemini token usage
@@ -901,6 +914,7 @@ async def search_documents(req: SearchRequest, request: Request):
             doc_type_filter=filter_type,
             category_filter=filter_category,
             doc_type_ext_filter=filter_ext,
+            search_profile=req.search_profile,
             exclude_doc_ids=excluded_ids or None,
             query_parser=qp,
             registry=registry,
@@ -917,6 +931,33 @@ async def search_documents(req: SearchRequest, request: Request):
             doc_results, req.query, registry=registry, category_filter=filter_category
         )
 
+        # --- PydanticAI agent path (feature toggle) ---
+        if settings.agents.enabled:
+            try:
+                from doc_pipeline.agents.deps import SearchDeps
+                from doc_pipeline.agents.search_agent import get_search_agent
+
+                deps = SearchDeps(
+                    query=req.query,
+                    rag_prompt=rag_prompt,
+                    references=references,
+                    search_profile=req.search_profile,
+                )
+                agent = get_search_agent()
+                result = await agent.run(req.query, deps=deps)
+                answer_obj = result.output
+                return {
+                    "answer": answer_obj.answer,
+                    "references": references,
+                    "search_profile": req.search_profile,
+                    "citations": [c.model_dump() for c in answer_obj.citations],
+                    "confidence": answer_obj.confidence,
+                    "follow_up": answer_obj.follow_up,
+                }
+            except Exception:
+                logger.warning("Search agent failed, falling back to legacy", exc_info=True)
+
+        # --- Legacy Gemini direct call ---
         response = await _run_in_llm(
             request,
             _call_with_retry,
@@ -926,7 +967,11 @@ async def search_documents(req: SearchRequest, request: Request):
             config=types.GenerateContentConfig(temperature=0.3),
         )
 
-        return {"answer": response.text, "references": references}
+        return {
+            "answer": response.text,
+            "references": references,
+            "search_profile": req.search_profile,
+        }
 
     except Exception as exc:
         logger.error("Search API Error: %s", exc)
@@ -946,6 +991,9 @@ async def search_stream(
     doc_type_filter: str = "전체",
     category_filter: str = "전체",
     doc_type_ext_filter: str = "전체",
+    search_profile: Literal[
+        "auto", "technical_qa", "project_lookup", "contract_lookup", "method_docs"
+    ] = "auto",
 ):
     """SSE streaming search: sends references, then token-by-token LLM answer."""
     client = _get_client(request)
@@ -995,6 +1043,7 @@ async def search_stream(
                 doc_type_filter=filter_type,
                 category_filter=cat_filter,
                 doc_type_ext_filter=ext_filter,
+                search_profile=search_profile,
                 exclude_doc_ids=excluded_ids or None,
                 query_parser=qp,
                 registry=registry,
@@ -1014,58 +1063,86 @@ async def search_stream(
             )
             yield {"event": "references", "data": json.dumps(references, ensure_ascii=False)}
 
-            # 3. Gemini streaming via asyncio.Queue bridge (true token-by-token)
-            await _run_in_llm(request, _rate_limit)
+            # 3. LLM answer generation (streaming)
+            _use_legacy = True
 
-            stream = await _run_in_llm(
-                request,
-                client.models.generate_content_stream,
-                model=settings.gemini.model_name,
-                contents=rag_prompt,
-                config=types.GenerateContentConfig(temperature=0.3),
-            )
-
-            # Queue bridge: blocking Gemini iterator → async generator
-            # None = end sentinel, Exception = error sentinel
-            queue: asyncio.Queue[str | None | Exception] = asyncio.Queue()
-            loop = asyncio.get_running_loop()
-            cancel = threading.Event()
-
-            def _consume_stream():
+            # --- PydanticAI agent streaming path ---
+            if settings.agents.enabled:
                 try:
-                    for chunk in stream:
-                        if cancel.is_set():
-                            break
-                        text = getattr(chunk, "text", "") or ""
-                        if text:
-                            asyncio.run_coroutine_threadsafe(queue.put(text), loop)
-                except Exception as exc:
-                    asyncio.run_coroutine_threadsafe(queue.put(exc), loop)
-                finally:
-                    asyncio.run_coroutine_threadsafe(queue.put(None), loop)
+                    from doc_pipeline.agents.deps import SearchDeps
+                    from doc_pipeline.agents.search_agent import get_search_agent
 
-            request.app.state.llm_executor.submit(_consume_stream)
+                    deps = SearchDeps(
+                        query=query, rag_prompt=rag_prompt,
+                        references=references, search_profile=search_profile,
+                    )
+                    agent = get_search_agent()
+                    async with agent.run_stream(query, deps=deps) as stream_result:
+                        async for token in stream_result.stream_text(delta=True):
+                            if await request.is_disconnected():
+                                logger.info("SSE client disconnected, cancelling stream")
+                                return
+                            yield {"event": "token", "data": token}
+                    yield {"event": "done", "data": ""}
+                    _use_legacy = False
+                except Exception:
+                    logger.warning(
+                        "Stream agent failed, falling back to legacy", exc_info=True,
+                    )
 
-            while True:
-                # Check client disconnect between tokens
-                if await request.is_disconnected():
-                    cancel.set()
-                    logger.info("SSE client disconnected, cancelling stream")
-                    return
+            if _use_legacy:
+                # --- Legacy Gemini streaming via asyncio.Queue bridge ---
+                await _run_in_llm(request, _rate_limit)
 
-                try:
-                    token = await asyncio.wait_for(queue.get(), timeout=1.0)
-                except asyncio.TimeoutError:
-                    continue  # Allows disconnect check loop
+                stream = await _run_in_llm(
+                    request,
+                    client.models.generate_content_stream,
+                    model=settings.gemini.model_name,
+                    contents=rag_prompt,
+                    config=types.GenerateContentConfig(temperature=0.3),
+                )
 
-                if token is None:
-                    break
-                if isinstance(token, Exception):
-                    yield {"event": "server_error", "data": "AI 응답 생성 중 오류가 발생했습니다."}
-                    return
-                yield {"event": "token", "data": token}
+                queue: asyncio.Queue[str | None | Exception] = asyncio.Queue()
+                loop = asyncio.get_running_loop()
+                cancel = threading.Event()
 
-            yield {"event": "done", "data": ""}
+                def _consume_stream():
+                    try:
+                        for chunk in stream:
+                            if cancel.is_set():
+                                break
+                            text = getattr(chunk, "text", "") or ""
+                            if text:
+                                asyncio.run_coroutine_threadsafe(queue.put(text), loop)
+                    except Exception as exc:
+                        asyncio.run_coroutine_threadsafe(queue.put(exc), loop)
+                    finally:
+                        asyncio.run_coroutine_threadsafe(queue.put(None), loop)
+
+                request.app.state.llm_executor.submit(_consume_stream)
+
+                while True:
+                    if await request.is_disconnected():
+                        cancel.set()
+                        logger.info("SSE client disconnected, cancelling stream")
+                        return
+
+                    try:
+                        token = await asyncio.wait_for(queue.get(), timeout=1.0)
+                    except asyncio.TimeoutError:
+                        continue
+
+                    if token is None:
+                        break
+                    if isinstance(token, Exception):
+                        yield {
+                            "event": "server_error",
+                            "data": "AI 응답 생성 중 오류가 발생했습니다.",
+                        }
+                        return
+                    yield {"event": "token", "data": token}
+
+                yield {"event": "done", "data": ""}
 
         except Exception as exc:
             logger.error("SSE stream error: %s", exc)

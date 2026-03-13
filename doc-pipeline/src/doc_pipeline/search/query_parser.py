@@ -73,6 +73,15 @@ _SEARCH_TYPE_STOPWORDS = frozenset({
     "계획", "보강",                   # 범용
 })
 
+_PROJECT_TOKEN_STOPWORDS = frozenset({
+    "구조", "구조검토", "검토", "의견서", "보고서", "계약서", "계약", "용역",
+    "자료", "제안서", "소개", "소개자료", "요약자료", "공법", "공법자료",
+    "인정서", "ve", "tsc", "cft",
+    "비구조", "비구조요소", "내진", "내진설계",
+    "슬래브", "기둥", "기초", "보", "접합부", "데크", "데크플레이트",
+    "deck", "plate", "변경", "안전성",
+})
+
 
 class QueryParser:
     """Extracts metadata from free-text search queries.
@@ -195,34 +204,56 @@ class QueryParser:
         if exact_matches:
             return exact_matches[0]  # Longest match
 
-        # Phase 2: Reverse containment — query token is substring of known project
-        # Split text into meaningful tokens (2+ chars)
-        tokens = [t for t in text_stripped.split() if len(t) >= 2]
-        reverse_matches: list[str] = []
-        for token in tokens:
-            for proj in sorted(self._known_projects, key=len, reverse=True):
+        # Phase 2: Reverse containment — score projects by meaningful token overlap.
+        tokens = self._project_tokens(text_stripped)
+        if tokens:
+            reverse_scores: list[tuple[int, int, int, str]] = []
+            for proj in self._known_projects:
                 if not proj:
                     continue
-                if token in proj:
-                    reverse_matches.append(proj)
+                proj_lower = proj.lower()
+                matched = [token for token in tokens if token in proj_lower]
+                if not matched:
+                    continue
+                reverse_scores.append((len(matched), sum(len(t) for t in matched), len(proj), proj))
 
-        if reverse_matches:
-            # Return the longest matching project
-            return max(reverse_matches, key=len)
+            if reverse_scores:
+                reverse_scores.sort(reverse=True)
+                best_count, best_len, _, best_proj = reverse_scores[0]
+                if len(tokens) >= 3:
+                    if best_count >= 2 or best_len >= 6:
+                        return best_proj
+                elif best_len >= 2:
+                    return best_proj
 
-        # Phase 3: Fuzzy match using SequenceMatcher
+        # Phase 3: Fuzzy match using SequenceMatcher on meaningful tokens only
         best_ratio = 0.0
         best_proj = ""
         for proj in self._known_projects:
             if not proj:
                 continue
             for token in tokens:
+                if len(token) < 3:
+                    continue
                 ratio = SequenceMatcher(None, token, proj).ratio()
                 if ratio >= self._FUZZY_THRESHOLD and ratio > best_ratio:
                     best_ratio = ratio
                     best_proj = proj
 
         return best_proj
+
+    @staticmethod
+    def _project_tokens(text: str) -> list[str]:
+        """Return query tokens that are meaningful for project matching."""
+        tokens: list[str] = []
+        for raw in text.lower().replace("-", " ").split():
+            token = raw.strip()
+            if len(token) < 2:
+                continue
+            if token in _PROJECT_TOKEN_STOPWORDS:
+                continue
+            tokens.append(token)
+        return tokens
 
     def _extract_topics(self, text: str) -> list[str]:
         """Extract domain-specific topics from text."""
