@@ -54,10 +54,12 @@ class SearchAggregator:
         best_weight: float = 0.5,
         avg_top3_weight: float = 0.3,
         metadata_weight: float = 0.2,
+        fts_doc_weight: float = 0.15,
     ) -> None:
         self.best_weight = best_weight
         self.avg_top3_weight = avg_top3_weight
         self.metadata_weight = metadata_weight
+        self.fts_doc_weight = fts_doc_weight
 
     def aggregate(
         self,
@@ -66,6 +68,7 @@ class SearchAggregator:
         query_project: str = "",
         query_year: int = 0,
         query_doc_type: str = "",
+        fts_doc_scores: dict[str, float] | None = None,
     ) -> list[DocumentResult]:
         """Aggregate chunk results into document-level results.
 
@@ -74,6 +77,8 @@ class SearchAggregator:
             query_project: Extracted project name from query for bonus.
             query_year: Extracted year from query for bonus.
             query_doc_type: Extracted document type from query for bonus.
+            fts_doc_scores: Optional doc-level FTS scores {doc_id: score}.
+                Applied as additive bonus to doc_score.
 
         Returns:
             Document-level results sorted by doc_score descending.
@@ -107,6 +112,10 @@ class SearchAggregator:
                 + avg_top3 * self.avg_top3_weight
                 + metadata_bonus * self.metadata_weight
             )
+
+            # Add doc-level FTS bonus (if available)
+            if fts_doc_scores and doc_id in fts_doc_scores:
+                doc_score += fts_doc_scores[doc_id] * self.fts_doc_weight
 
             doc_results.append(DocumentResult(
                 doc_id=doc_id,

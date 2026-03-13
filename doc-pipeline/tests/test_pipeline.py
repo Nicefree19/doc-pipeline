@@ -9,6 +9,7 @@ import pytest
 
 from doc_pipeline.models.schemas import (
     BlockType,
+    ChunkRecord,
     DocType,
     OCRBlock,
     SecurityGrade,
@@ -23,6 +24,24 @@ from doc_pipeline.processor.pipeline import (
     _run_ocr_isolated,
     process_pdf,
 )
+
+
+def _make_chunk(
+    chunk_id: str = "c1",
+    doc_id: str = "d1",
+    text: str = "테스트 청크 텍스트",
+    chunk_index: int = 0,
+) -> ChunkRecord:
+    return ChunkRecord(
+        chunk_id=chunk_id,
+        doc_id=doc_id,
+        doc_type=DocType.OPINION,
+        project_name="테스트",
+        year=2024,
+        chunk_index=chunk_index,
+        text=text,
+        security_grade=SecurityGrade.C,
+    )
 
 
 class TestChunkText:
@@ -425,3 +444,366 @@ class TestEmbedExtractedText:
 
         # Should have used cached text and produced chunks
         assert chunks > 0
+
+
+class TestChunkExplosionGuard:
+    def test_chunk_guard_truncates(self, tmp_path: Path) -> None:
+        """Chunks exceeding max_chunks_per_doc are truncated."""
+        from doc_pipeline.models.schemas import DocMaster
+
+        doc = DocMaster(
+            doc_id="explosion001",
+            file_name_original="big.pdf",
+            doc_type=DocType.OPINION,
+            project_name="테스트",
+            year=2024,
+            security_grade=SecurityGrade.B,
+        )
+
+        # Large text that will produce many chunks
+        big_text = "가나다라마바사 " * 500  # ~4000 chars with small chunks
+
+        with patch("doc_pipeline.processor.pipeline.settings") as mock_settings:
+            mock_settings.chroma.chunk_size = 20
+            mock_settings.chroma.chunk_overlap = 5
+            mock_settings.chroma.max_chunks_per_doc = 5
+
+            chunks = _build_chunks(
+                doc, DocType.OPINION, "테스트", 2024, SecurityGrade.B, big_text,
+            )
+
+        assert len(chunks) == 5
+
+
+class TestReplaceSemanticsStaleChunkPrune:
+    def test_prune_stale_chunks(self, tmp_path: Path) -> None:
+        """After re-embed, stale chunks not in new set are pruned."""
+        from doc_pipeline.processor.pipeline import _prune_stale_chunks
+        from doc_pipeline.storage.vectordb import VectorStore
+
+        store = VectorStore(str(tmp_path / "prune_chroma"))
+
+        # Initial embed: 10 chunks
+        initial_chunks = [
+            _make_chunk(f"doc1_{i}", doc_id="doc1", text=f"old chunk {i}", chunk_index=i)
+            for i in range(10)
+        ]
+        store.upsert_chunks_local(initial_chunks)
+        assert store.count == 10
+
+        # Re-embed: 5 chunks (new set)
+        new_chunks = [
+            _make_chunk(f"doc1_{i}", doc_id="doc1", text=f"new chunk {i}", chunk_index=i)
+            for i in range(5)
+        ]
+        store.upsert_chunks_local(new_chunks)
+
+        new_ids = {f"doc1_{i}" for i in range(5)}
+        pruned = _prune_stale_chunks(store, "doc1", new_ids)
+
+        assert pruned == 5  # stale doc1_5 through doc1_9
+        assert store.count == 5  # only new chunks remain
+
+    def test_prune_empty_new_ids_noop(self, tmp_path: Path) -> None:
+        """Empty new_chunk_ids → no-op (safety guard)."""
+        from doc_pipeline.processor.pipeline import _prune_stale_chunks
+        from doc_pipeline.storage.vectordb import VectorStore
+
+        store = VectorStore(str(tmp_path / "prune_noop"))
+        chunks = [_make_chunk("doc1_0", doc_id="doc1")]
+        store.upsert_chunks_local(chunks)
+
+        pruned = _prune_stale_chunks(store, "doc1", set())
+        assert pruned == 0
+        assert store.count == 1  # preserved
+
+
+class TestCrossGradeReembed:
+    """Verify that re-embedding with a different grade clears the opposite collection."""
+
+    def test_api_to_local_clears_api_collection(self, tmp_path: Path) -> None:
+        """C-grade chunks in API collection → B-grade re-embed → API collection cleared."""
+        from doc_pipeline.processor.pipeline import _clear_opposite_collection
+        from doc_pipeline.storage.vectordb import VectorStore
+
+        store = VectorStore(str(tmp_path / "cross_c_to_b"))
+
+        # Simulate C-grade: chunks in API collection (need embeddings)
+        api_chunks = [
+            _make_chunk(f"doc1_{i}", doc_id="doc1", text=f"api chunk {i}", chunk_index=i)
+            for i in range(3)
+        ]
+        embeddings = [[0.1] * 384 for _ in range(3)]
+        store.upsert_chunks(api_chunks, embeddings)
+        assert store._collection.count() == 3
+        assert store._local_collection.count() == 0
+
+        # Now re-embed as B-grade: clear opposite (API) collection first
+        cleared = _clear_opposite_collection(store, "doc1", SecurityGrade.B)
+        assert cleared == 3
+        assert store._collection.count() == 0
+
+        # Then upsert into local
+        local_chunks = [
+            _make_chunk(f"doc1_{i}", doc_id="doc1", text=f"local chunk {i}", chunk_index=i)
+            for i in range(3)
+        ]
+        store.upsert_chunks_local(local_chunks)
+        assert store.count == 3  # exactly one set, not 6
+
+    def test_local_to_api_clears_local_collection(self, tmp_path: Path) -> None:
+        """B-grade chunks in local collection → C-grade re-embed → local collection cleared."""
+        from doc_pipeline.processor.pipeline import _clear_opposite_collection
+        from doc_pipeline.storage.vectordb import VectorStore
+
+        store = VectorStore(str(tmp_path / "cross_b_to_c"))
+
+        # Simulate B-grade: chunks in local collection
+        local_chunks = [
+            _make_chunk(f"doc1_{i}", doc_id="doc1", text=f"local chunk {i}", chunk_index=i)
+            for i in range(4)
+        ]
+        store.upsert_chunks_local(local_chunks)
+        assert store._local_collection.count() == 4
+        assert store._collection.count() == 0
+
+        # Now re-embed as C-grade: clear opposite (local) collection first
+        cleared = _clear_opposite_collection(store, "doc1", SecurityGrade.C)
+        assert cleared == 4
+        assert store._local_collection.count() == 0
+
+        # Then upsert into API collection
+        api_chunks = [
+            _make_chunk(f"doc1_{i}", doc_id="doc1", text=f"api chunk {i}", chunk_index=i)
+            for i in range(4)
+        ]
+        embeddings = [[0.1] * 384 for _ in range(4)]
+        store.upsert_chunks(api_chunks, embeddings)
+        assert store.count == 4  # exactly one set
+
+    def test_same_grade_reembed_no_opposite_clear(self, tmp_path: Path) -> None:
+        """B→B re-embed: opposite (API) collection is empty, cleared == 0."""
+        from doc_pipeline.processor.pipeline import _clear_opposite_collection
+        from doc_pipeline.storage.vectordb import VectorStore
+
+        store = VectorStore(str(tmp_path / "same_grade"))
+
+        local_chunks = [_make_chunk("doc1_0", doc_id="doc1")]
+        store.upsert_chunks_local(local_chunks)
+
+        # API collection is empty, so clearing it is a no-op
+        cleared = _clear_opposite_collection(store, "doc1", SecurityGrade.B)
+        assert cleared == 0
+        assert store.count == 1
+
+    def test_cross_grade_embed_failure_preserves_old_chunks(
+        self, tmp_path: Path, sample_pdf: Path,
+    ) -> None:
+        """If cross-grade re-embed fails mid-flight, old chunks must survive.
+
+        Scenario: doc1 was B-grade (local collection, 3 chunks).
+        Re-embed as C-grade, but get_embeddings raises → exception propagates.
+        Old local chunks must still be present for search continuity.
+        """
+        from doc_pipeline.models.schemas import DocMaster, ProcessStatus
+        from doc_pipeline.processor.pipeline import embed_document
+        from doc_pipeline.storage.registry import DocumentRegistry
+        from doc_pipeline.storage.vectordb import VectorStore
+
+        chroma_dir = str(tmp_path / "fail_chroma")
+        store = VectorStore(chroma_dir)
+
+        # Pre-populate: B-grade chunks in local collection
+        old_chunks = [
+            _make_chunk(f"doc1_{i}", doc_id="doc1", text=f"old B chunk {i}", chunk_index=i)
+            for i in range(3)
+        ]
+        store.upsert_chunks_local(old_chunks)
+        assert store.count == 3
+        assert store._local_collection.count() == 3
+
+        # Set up registry with the doc
+        db_path = str(tmp_path / "fail_reg.db")
+        registry = DocumentRegistry(db_path=db_path)
+        doc = DocMaster(
+            doc_id="doc1",
+            file_name_original=sample_pdf.name,
+            doc_type=DocType.OPINION,
+            process_status=ProcessStatus.COMPLETED,
+            security_grade=SecurityGrade.B,
+        )
+        registry.insert_document(doc, source_path=str(sample_pdf))
+
+        doc_record = registry.get_document("doc1")
+
+        # Attempt C-grade re-embed with failing get_embeddings
+        with patch("doc_pipeline.collector.adapters.get_adapter") as mock_adapter:
+            mock_norm = MagicMock()
+            mock_norm.text = "텍스트 " * 100
+            mock_norm.is_scanned = False
+            mock_adapter.return_value.extract.return_value = mock_norm
+
+            with patch(
+                "doc_pipeline.processor.llm.get_embeddings",
+                side_effect=RuntimeError("API unavailable"),
+            ):
+                with pytest.raises(RuntimeError, match="API unavailable"):
+                    embed_document(
+                        doc_record, sample_pdf, SecurityGrade.C,
+                        store=store, registry=registry,
+                    )
+
+        # Key invariant: old B-grade chunks survive in local collection
+        assert store._local_collection.count() == 3
+        assert store.count >= 3  # old chunks still searchable
+
+    def test_cross_grade_c_to_b_failure_preserves_api_chunks(
+        self, tmp_path: Path, sample_pdf: Path,
+    ) -> None:
+        """Symmetric case: C-grade API chunks survive if B-grade re-embed fails.
+
+        Scenario: doc1 was C-grade (API collection, 3 chunks with embeddings).
+        Re-embed as B-grade, but upsert_chunks_local raises → exception propagates.
+        Old API chunks must remain for search continuity.
+        """
+        from doc_pipeline.models.schemas import DocMaster, ProcessStatus
+        from doc_pipeline.processor.pipeline import embed_document
+        from doc_pipeline.storage.registry import DocumentRegistry
+        from doc_pipeline.storage.vectordb import VectorStore
+
+        chroma_dir = str(tmp_path / "fail_c2b_chroma")
+        store = VectorStore(chroma_dir)
+
+        # Pre-populate: C-grade chunks in API collection
+        old_chunks = [
+            _make_chunk(f"doc1_{i}", doc_id="doc1", text=f"old C chunk {i}", chunk_index=i)
+            for i in range(3)
+        ]
+        embeddings = [[0.1] * 384 for _ in range(3)]
+        store.upsert_chunks(old_chunks, embeddings)
+        assert store._collection.count() == 3
+
+        # Set up registry
+        db_path = str(tmp_path / "fail_c2b_reg.db")
+        registry = DocumentRegistry(db_path=db_path)
+        doc = DocMaster(
+            doc_id="doc1",
+            file_name_original=sample_pdf.name,
+            doc_type=DocType.OPINION,
+            process_status=ProcessStatus.COMPLETED,
+            security_grade=SecurityGrade.C,
+        )
+        registry.insert_document(doc, source_path=str(sample_pdf))
+        doc_record = registry.get_document("doc1")
+
+        # Attempt B-grade re-embed with failing upsert_chunks_local
+        with patch("doc_pipeline.collector.adapters.get_adapter") as mock_adapter:
+            mock_norm = MagicMock()
+            mock_norm.text = "텍스트 " * 100
+            mock_norm.is_scanned = False
+            mock_adapter.return_value.extract.return_value = mock_norm
+
+            with patch.object(
+                store, "upsert_chunks_local",
+                side_effect=RuntimeError("ChromaDB write failed"),
+            ):
+                with pytest.raises(RuntimeError, match="ChromaDB write failed"):
+                    embed_document(
+                        doc_record, sample_pdf, SecurityGrade.B,
+                        store=store, registry=registry,
+                    )
+
+        # Key invariant: old C-grade API chunks survive
+        assert store._collection.count() == 3
+        assert store.count >= 3
+
+
+class TestEmbedFailureTracking:
+    """embed_document records failure once, clears on success."""
+
+    def test_embed_failure_single_count(self, tmp_path: Path, sample_pdf: Path) -> None:
+        """OCR timeout + no text → single failure record, not double-counted."""
+        from doc_pipeline.models.schemas import DocMaster, ProcessStatus
+        from doc_pipeline.processor.pipeline import embed_document
+        from doc_pipeline.storage.registry import DocumentRegistry
+
+        db_path = str(tmp_path / "fail_track.db")
+        registry = DocumentRegistry(db_path=db_path)
+        doc = DocMaster(
+            doc_id="fail1",
+            file_name_original="scan.pdf",
+            doc_type=DocType.OPINION,
+            process_status=ProcessStatus.COMPLETED,
+            security_grade=SecurityGrade.B,
+        )
+        registry.insert_document(doc, source_path=str(sample_pdf))
+        doc_record = registry.get_document("fail1")
+
+        with patch("doc_pipeline.collector.adapters.get_adapter") as mock_adapter:
+            mock_norm = MagicMock()
+            mock_norm.text = ""  # adapter returns no text
+            mock_norm.is_scanned = True
+            mock_adapter.return_value.extract.return_value = mock_norm
+
+            with patch(
+                "doc_pipeline.processor.pipeline._run_ocr_isolated",
+                return_value=None,  # OCR timeout
+            ):
+                result = embed_document(
+                    doc_record, sample_pdf, SecurityGrade.B,
+                    registry=registry,
+                )
+                assert result == 0
+
+        meta = registry.get_metadata("fail1")
+        assert meta is not None
+        # Single invocation → exactly 1 attempt recorded
+        assert meta["metadata"]["embed_attempts"] == 1
+        assert meta["metadata"]["embed_error_type"] in ("ocr_timeout", "no_text")
+
+    def test_embed_success_clears_failure(self, tmp_path: Path, sample_pdf: Path) -> None:
+        """After successful embedding, failure metadata is cleared."""
+        from doc_pipeline.models.schemas import DocMaster, ProcessStatus
+        from doc_pipeline.processor.pipeline import embed_document
+        from doc_pipeline.storage.registry import DocumentRegistry
+        from doc_pipeline.storage.vectordb import VectorStore
+
+        db_path = str(tmp_path / "clear_fail.db")
+        registry = DocumentRegistry(db_path=db_path)
+        chroma_dir = str(tmp_path / "clear_chroma")
+        store = VectorStore(persist_dir=chroma_dir)
+
+        doc = DocMaster(
+            doc_id="clear1",
+            file_name_original="ok.pdf",
+            doc_type=DocType.OPINION,
+            process_status=ProcessStatus.COMPLETED,
+            security_grade=SecurityGrade.B,
+        )
+        registry.insert_document(doc, source_path=str(sample_pdf))
+
+        # Pre-set failure metadata
+        registry.update_embed_failure("clear1", "ocr_timeout", "Timeout")
+        meta_before = registry.get_metadata("clear1")
+        assert meta_before["metadata"]["embed_error_type"] == "ocr_timeout"
+
+        doc_record = registry.get_document("clear1")
+
+        # Successful embed
+        with patch("doc_pipeline.collector.adapters.get_adapter") as mock_adapter:
+            mock_norm = MagicMock()
+            mock_norm.text = "텍스트 " * 100
+            mock_norm.is_scanned = False
+            mock_adapter.return_value.extract.return_value = mock_norm
+
+            result = embed_document(
+                doc_record, sample_pdf, SecurityGrade.B,
+                store=store, registry=registry,
+            )
+            assert result > 0
+
+        # Failure metadata should be cleared
+        meta_after = registry.get_metadata("clear1")
+        assert meta_after is not None
+        assert "embed_error_type" not in meta_after["metadata"]
+        assert "embed_attempts" not in meta_after["metadata"]

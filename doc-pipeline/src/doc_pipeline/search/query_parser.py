@@ -66,6 +66,14 @@ class ParsedQuery:
     topics: list[str] = field(default_factory=list)
 
 
+# Parser-specific stopwords: too generic for search type detection
+# (kept in YAML for document classification where full context is available)
+_SEARCH_TYPE_STOPWORDS = frozenset({
+    "검토", "공사", "용역", "시공",  # project_name에 자주 포함
+    "계획", "보강",                   # 범용
+})
+
+
 class QueryParser:
     """Extracts metadata from free-text search queries.
 
@@ -144,12 +152,20 @@ class QueryParser:
         return year, cleaned
 
     def _extract_doc_type(self, text: str) -> tuple[str, str]:
-        """Extract document type using keyword matching. Returns (doc_type, category)."""
+        """Extract document type using keyword matching. Returns (doc_type, category).
+
+        Skips keywords that are in _SEARCH_TYPE_STOPWORDS to avoid false
+        positives on generic terms that frequently appear in project names.
+        """
         if not self._type_keyword_map:
             return "", ""
 
         text_lower = text.lower()
         for keyword, doc_type in self._type_keyword_map:
+            if len(keyword) < 2:
+                continue
+            if keyword in _SEARCH_TYPE_STOPWORDS:
+                continue  # too generic for search type detection
             if keyword.lower() in text_lower:
                 category = self._type_category_map.get(doc_type, "")
                 return doc_type, category

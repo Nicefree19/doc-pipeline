@@ -18,6 +18,14 @@ if not os.getenv("CI") and os.getenv("NOVA_ENV") != "ci":
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 
 
+def _resolve_path(raw: str) -> str:
+    """Resolve relative path against PROJECT_ROOT."""
+    p = Path(raw)
+    if p.is_absolute():
+        return str(p)
+    return str(PROJECT_ROOT / p)
+
+
 class GeminiSettings(BaseModel):
     api_key: str = Field(default_factory=lambda: os.getenv("GEMINI_API_KEY", ""))
     model_name: str = "gemini-2.0-flash"
@@ -45,11 +53,16 @@ class WatchSettings(BaseModel):
 
 class ChromaSettings(BaseModel):
     persist_dir: str = Field(
-        default_factory=lambda: os.getenv("CHROMA_PERSIST_DIR", "./data/chromadb")
+        default_factory=lambda: _resolve_path(
+            os.getenv("CHROMA_PERSIST_DIR", "data/chromadb")
+        )
     )
     collection_name: str = "doc_chunks"
     chunk_size: int = 800
     chunk_overlap: int = 200
+    max_chunks_per_doc: int = Field(
+        default_factory=lambda: int(os.getenv("MAX_CHUNKS_PER_DOC", "500"))
+    )
 
 
 class LoggingSettings(BaseModel):
@@ -79,10 +92,14 @@ class OCRGatewaySettings(BaseModel):
 
 class RegistrySettings(BaseModel):
     db_path: str = Field(
-        default_factory=lambda: os.getenv("REGISTRY_DB_PATH", "./data/registry.db")
+        default_factory=lambda: _resolve_path(
+            os.getenv("REGISTRY_DB_PATH", "data/registry.db")
+        )
     )
     managed_dir: str = Field(
-        default_factory=lambda: os.getenv("MANAGED_STORAGE_DIR", "./data/managed")
+        default_factory=lambda: _resolve_path(
+            os.getenv("MANAGED_STORAGE_DIR", "data/managed")
+        )
     )
     enabled: bool = os.getenv("REGISTRY_ENABLED", "true").lower() == "true"
 
@@ -107,7 +124,9 @@ class FTSSettings(BaseModel):
     fts_weight: float = float(os.getenv("FTS_WEIGHT", "0.3"))
     vector_weight: float = float(os.getenv("VECTOR_WEIGHT", "0.7"))
     db_path: str = Field(
-        default_factory=lambda: os.getenv("FTS_DB_PATH", "./data/chunks_fts.db")
+        default_factory=lambda: _resolve_path(
+            os.getenv("FTS_DB_PATH", "data/chunks_fts.db")
+        )
     )
 
 

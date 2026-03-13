@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import logging
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -13,6 +14,7 @@ from doc_pipeline.cli import (
     cmd_process,
     cmd_batch,
     cmd_embed,
+    cmd_purge,
     cmd_reclassify,
     cmd_report,
     cmd_health,
@@ -562,3 +564,93 @@ class TestCmdHealth:
         assert exc_info.value.code == 1
         captured = capsys.readouterr()
         assert "MISSING" in captured.out
+
+
+class TestCmdPurge:
+    def test_purge_fix_status_standalone(self, tmp_path: Path) -> None:
+        """--fix-status alone updates process_status for embedded docs."""
+        import sqlite3
+
+        from doc_pipeline.models.schemas import DocMaster, DocType
+        from doc_pipeline.storage.registry import DocumentRegistry
+
+        db_path = str(tmp_path / "purge_reg.db")
+        registry = DocumentRegistry(db_path=db_path)
+
+        # Insert docs with different statuses
+        for i, status_val in enumerate(["대기", "완료", "추출완료", "실패"]):
+            doc = DocMaster(
+                doc_id=f"pfix{i:03d}",
+                file_name_original=f"fix{i}.pdf",
+                doc_type=DocType.OPINION,
+            )
+            registry.insert_document(doc, source_path=f"/p/{i}")
+            # Mark first 3 as embedded
+            if i < 3:
+                registry.update_document(f"pfix{i:03d}", embedded_at="2026-03-11T00:00:00")
+            # Set process_status directly
+            conn = sqlite3.connect(db_path)
+            conn.execute(
+                "UPDATE documents SET process_status = ? WHERE doc_id = ?",
+                (status_val, f"pfix{i:03d}"),
+            )
+            conn.commit()
+            conn.close()
+
+        args = argparse.Namespace(fix_status=True, broken_paths=False, doc_ids=None, dry_run=False)
+        with patch("doc_pipeline.cli.settings") as mock_settings:
+            mock_settings.registry.db_path = db_path
+            cmd_purge(args)
+
+        # Verify: 대기, 완료, 추출완료 (embedded) → 인덱싱완료; 실패 (not embedded) unchanged
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute("SELECT doc_id, process_status FROM documents ORDER BY doc_id").fetchall()
+        conn.close()
+        status_map = {r["doc_id"]: r["process_status"] for r in rows}
+        assert status_map["pfix000"] == "인덱싱완료"
+        assert status_map["pfix001"] == "인덱싱완료"
+        assert status_map["pfix002"] == "인덱싱완료"
+        assert status_map["pfix003"] == "실패"  # not embedded, unchanged
+
+
+class TestCmdEmbed4Counter:
+    @patch("doc_pipeline.cli._resolve_doc_file_path")
+    @patch("doc_pipeline.processor.pipeline.embed_document")
+    @patch("doc_pipeline.storage.vectordb.VectorStore")
+    @patch("doc_pipeline.storage.registry.DocumentRegistry")
+    def test_embed_4_counter(
+        self,
+        mock_reg_cls,
+        mock_store_cls,
+        mock_embed,
+        mock_resolve,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """4-counter: success, skipped_missing, skipped_zero, errors."""
+        mock_registry = MagicMock()
+        mock_reg_cls.return_value = mock_registry
+        mock_store_cls.return_value = MagicMock()
+
+        docs = [
+            {"doc_id": "d1", "file_name_original": "f1.pdf"},
+            {"doc_id": "d2", "file_name_original": "f2.pdf"},
+            {"doc_id": "d3", "file_name_original": "f3.pdf"},
+            {"doc_id": "d4", "file_name_original": "f4.pdf"},
+        ]
+        mock_registry.list_unembedded.return_value = docs
+
+        # d1: file not found; d2: success (5 chunks); d3: 0 chunks; d4: error
+        mock_resolve.side_effect = [None, Path("/fake/f2.pdf"), Path("/fake/f3.pdf"), Path("/fake/f4.pdf")]
+        mock_embed.side_effect = [5, 0, RuntimeError("test error")]
+
+        args = argparse.Namespace(
+            doc_id=None, embed_all=True, grade="B", limit=None, dry_run=False, force=False,
+        )
+        with caplog.at_level(logging.INFO, logger="doc_pipeline"):
+            cmd_embed(args)
+
+        assert "1 success" in caplog.text
+        assert "1 skipped (no file)" in caplog.text
+        assert "1 skipped (no text)" in caplog.text
+        assert "1 errors" in caplog.text

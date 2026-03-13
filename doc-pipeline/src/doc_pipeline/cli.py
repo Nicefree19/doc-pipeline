@@ -243,6 +243,30 @@ def cmd_embed(args: argparse.Namespace) -> None:
         logger.info("No documents need embedding.")
         return
 
+    # Filter out terminal-failure docs (3+ attempts) unless --force or --retry-failed
+    if not getattr(args, "force", False) and not getattr(args, "retry_failed", False):
+        filtered = []
+        skipped_terminal = 0
+        for doc in docs:
+            meta = registry.get_metadata(doc["doc_id"])
+            meta_dict = (meta or {}).get("metadata") or {}
+            attempts = meta_dict.get("embed_attempts", 0) if isinstance(meta_dict, dict) else 0
+            if isinstance(attempts, int) and attempts >= 3:
+                skipped_terminal += 1
+                continue
+            filtered.append(doc)
+        docs = filtered
+        if skipped_terminal:
+            logger.info(
+                "Skipped %d terminal-failure docs (3+ attempts). "
+                "Use --force or --retry-failed to include.",
+                skipped_terminal,
+            )
+
+    if not docs:
+        logger.info("No documents need embedding.")
+        return
+
     if args.dry_run:
         logger.info("Dry run — %d documents would be embedded:", len(docs))
         for d in docs:
@@ -252,6 +276,8 @@ def cmd_embed(args: argparse.Namespace) -> None:
     logger.info("Embedding %d documents (grade=%s)", len(docs), grade.value)
     success = 0
     errors = 0
+    skipped_missing = 0
+    skipped_zero = 0
 
     # Create shared instances once for the entire batch (avoid per-doc overhead)
     from doc_pipeline.storage.vectordb import VectorStore
@@ -261,18 +287,25 @@ def cmd_embed(args: argparse.Namespace) -> None:
         file_path = _resolve_doc_file_path(doc)
         if not file_path:
             logger.warning("[%d/%d] %s: file not found, skipping", idx, len(docs), doc["doc_id"])
-            errors += 1
+            skipped_missing += 1
             continue
 
         start = time.time()
         try:
             chunks = embed_document(doc, file_path, grade, store=shared_store, registry=registry)
             elapsed = time.time() - start
-            logger.info(
-                "[%d/%d] %s: %d chunks (%.1fs)",
-                idx, len(docs), doc["doc_id"], chunks, elapsed,
-            )
-            success += 1
+            if chunks == 0:
+                logger.info(
+                    "[%d/%d] %s: 0 chunks (%.1fs)",
+                    idx, len(docs), doc["doc_id"], elapsed,
+                )
+                skipped_zero += 1
+            else:
+                logger.info(
+                    "[%d/%d] %s: %d chunks (%.1fs)",
+                    idx, len(docs), doc["doc_id"], chunks, elapsed,
+                )
+                success += 1
         except Exception as exc:
             elapsed = time.time() - start
             logger.error(
@@ -281,7 +314,10 @@ def cmd_embed(args: argparse.Namespace) -> None:
             )
             errors += 1
 
-    logger.info("Embedding complete: %d success, %d errors", success, errors)
+    logger.info(
+        "Embedding complete: %d success, %d skipped (no file), %d skipped (no text), %d errors",
+        success, skipped_missing, skipped_zero, errors,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -548,6 +584,84 @@ def _resolve_doc_file_path(doc: dict) -> Path | None:
 
 
 # ---------------------------------------------------------------------------
+# Purge command — clean orphaned/test documents, fix status
+# ---------------------------------------------------------------------------
+
+def cmd_purge(args: argparse.Namespace) -> None:
+    """Purge orphaned/test documents, fix process_status, or both."""
+    import sqlite3
+
+    from doc_pipeline.storage.registry import DocumentRegistry
+
+    registry = DocumentRegistry(db_path=settings.registry.db_path)
+
+    # --- Independent operation: --fix-status (standalone OK) ---
+    if getattr(args, "fix_status", False):
+        conn = sqlite3.connect(settings.registry.db_path)
+        count = conn.execute(
+            "UPDATE documents SET process_status = '인덱싱완료' "
+            "WHERE embedded_at IS NOT NULL AND length(embedded_at) > 0 "
+            "AND process_status IN ('대기', '완료', '추출완료')",
+        ).rowcount
+        conn.commit()
+        conn.close()
+        logger.info("Fixed process_status for %d documents", count)
+        if not getattr(args, "broken_paths", False) and not getattr(args, "doc_ids", None):
+            return  # --fix-status only
+
+    # --- Purge target resolution ---
+    target_ids: list[str] = []
+
+    if getattr(args, "broken_paths", False):
+        all_docs = registry.list_documents(limit=None, offset=0)
+        target_ids = [
+            doc["doc_id"]
+            for doc in all_docs
+            if _resolve_doc_file_path(doc) is None
+        ]
+        logger.info("Found %d documents with broken paths", len(target_ids))
+    elif getattr(args, "doc_ids", None):
+        target_ids = [d.strip() for d in args.doc_ids.split(",")]
+    else:
+        if not getattr(args, "fix_status", False):
+            logger.error("Specify --broken-paths, --doc-ids, or --fix-status")
+        return
+
+    if not target_ids:
+        logger.info("Nothing to purge")
+        return
+
+    if getattr(args, "dry_run", False):
+        logger.info("DRY RUN: would purge %d documents", len(target_ids))
+        for did in target_ids[:20]:
+            logger.info("  %s", did)
+        if len(target_ids) > 20:
+            logger.info("  ... and %d more", len(target_ids) - 20)
+        return
+
+    # Delete: ChunkFTS → ChromaDB → Registry
+    from doc_pipeline.storage.vectordb import ChunkFTS, VectorStore
+
+    store = VectorStore(persist_dir=settings.chroma.persist_dir)
+    chunks_deleted = store.delete_by_doc_ids(target_ids)
+
+    fts_deleted = 0
+    try:
+        fts = ChunkFTS(db_path=settings.fts.db_path)
+        fts_deleted = fts.delete_by_doc_ids(target_ids)
+    except Exception:
+        logger.warning("FTS cleanup skipped (FTS not available)")
+
+    docs_deleted = registry.delete_documents(target_ids)
+    logger.info(
+        "Purged %d documents, %d vector chunks, %d FTS entries",
+        docs_deleted,
+        chunks_deleted,
+        fts_deleted,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Search command
 # ---------------------------------------------------------------------------
 
@@ -639,6 +753,7 @@ def main() -> None:
     p_embed.add_argument("--limit", type=int, default=None, help="Max documents to embed")
     p_embed.add_argument("--dry-run", action="store_true", help="Show targets without embedding")
     p_embed.add_argument("--force", action="store_true", help="Re-embed all documents (ignore embedded_at)")
+    p_embed.add_argument("--retry-failed", action="store_true", help="Include terminal-failure docs (3+ attempts)")
 
     # reclassify
     p_reclass = sub.add_parser("reclassify", help="Reclassify registered documents")
@@ -654,6 +769,17 @@ def main() -> None:
     # health
     p_health = sub.add_parser("health", help="System health check")
     p_health.add_argument("--strict", action="store_true", help="Verify Gemini API with a real call")
+
+    # purge
+    p_purge = sub.add_parser("purge", help="Purge orphaned documents / fix status")
+    p_purge.add_argument(
+        "--broken-paths", action="store_true", help="Purge docs with non-existent file paths"
+    )
+    p_purge.add_argument("--doc-ids", help="Comma-separated doc_ids to purge")
+    p_purge.add_argument(
+        "--fix-status", action="store_true", help="Fix process_status for embedded docs (standalone OK)"
+    )
+    p_purge.add_argument("--dry-run", action="store_true")
 
     args = parser.parse_args()
 
@@ -675,6 +801,8 @@ def main() -> None:
         cmd_report(args)
     elif args.command == "health":
         cmd_health(args)
+    elif args.command == "purge":
+        cmd_purge(args)
     else:
         parser.print_help()
 

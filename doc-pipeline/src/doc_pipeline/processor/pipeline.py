@@ -584,12 +584,19 @@ def _build_chunks(
                 len(records),
                 len(_chunk_text(masked_text, chunk_size, chunk_overlap)),
             )
+            max_chunks = settings.chroma.max_chunks_per_doc
+            if len(records) > max_chunks:
+                logger.warning(
+                    "Chunk guard: doc_id=%s produced %d chunks, truncating to %d",
+                    doc.doc_id, len(records), max_chunks,
+                )
+                records = records[:max_chunks]
             return records
 
     # Legacy flat path
     text_chunks = _chunk_text(masked_text, chunk_size, chunk_overlap)
 
-    return [
+    chunks_list = [
         ChunkRecord(
             chunk_id=f"{doc.doc_id}_{i}",
             doc_id=doc.doc_id,
@@ -604,6 +611,14 @@ def _build_chunks(
         )
         for i, chunk_text in enumerate(text_chunks)
     ]
+    max_chunks = settings.chroma.max_chunks_per_doc
+    if len(chunks_list) > max_chunks:
+        logger.warning(
+            "Chunk guard: doc_id=%s produced %d chunks, truncating to %d",
+            doc.doc_id, len(chunks_list), max_chunks,
+        )
+        chunks_list = chunks_list[:max_chunks]
+    return chunks_list
 
 
 def _store_embeddings(
@@ -670,6 +685,60 @@ def _store_embeddings_local(
 # ---------------------------------------------------------------------------
 
 
+def _clear_opposite_collection(
+    store: Any, doc_id: str, grade: SecurityGrade,
+) -> int:
+    """Remove all chunks for *doc_id* from the collection NOT used by *grade*.
+
+    B-grade writes to ``_local_collection`` → clear ``_collection`` (API).
+    C-grade writes to ``_collection`` → clear ``_local_collection`` (local).
+
+    This enforces a single-source-of-truth: a document's chunks live in
+    exactly one collection after re-embedding.
+    """
+    opposite = store._collection if grade == SecurityGrade.B else store._local_collection
+    try:
+        existing = opposite.get(where={"doc_id": doc_id})
+        if existing and existing["ids"]:
+            opposite.delete(ids=existing["ids"])
+            removed = len(existing["ids"])
+            logger.info(
+                "Cleared %d chunks from opposite collection for doc_id=%s (grade=%s)",
+                removed, doc_id, grade.value,
+            )
+            return removed
+    except Exception as exc:
+        logger.warning(
+            "Failed to clear opposite collection for %s: %s", doc_id, exc,
+        )
+    return 0
+
+
+def _prune_stale_chunks(store: Any, doc_id: str, new_chunk_ids: set[str]) -> int:
+    """Remove chunks belonging to doc_id that are NOT in new_chunk_ids.
+
+    Replace semantics: upsert succeeded → now prune leftover stale chunks.
+    If new_chunk_ids is empty, this is a no-op to prevent accidental total deletion.
+    """
+    if not new_chunk_ids:
+        return 0
+    pruned = 0
+    for col in (store._collection, store._local_collection):
+        try:
+            existing = col.get(where={"doc_id": doc_id})
+            if not existing or not existing["ids"]:
+                continue
+            stale_ids = [cid for cid in existing["ids"] if cid not in new_chunk_ids]
+            if stale_ids:
+                col.delete(ids=stale_ids)
+                pruned += len(stale_ids)
+        except Exception as exc:
+            logger.warning("Stale chunk prune failed for %s in %s: %s", doc_id, col.name, exc)
+    if pruned:
+        logger.info("Pruned %d stale chunks for doc_id=%s", pruned, doc_id)
+    return pruned
+
+
 def embed_document(
     doc_record: dict[str, Any],
     file_path: Path,
@@ -703,6 +772,9 @@ def embed_document(
     normalized = adapter.extract(file_path)
     text = normalized.text
 
+    # Track embed failure (single record per invocation)
+    embed_error: tuple[str, str] | None = None  # (error_type, error_msg)
+
     # 2. OCR for scanned PDFs (capture blocks for block-aware chunking)
     ocr_blocks = None
     if normalized.is_scanned and file_path.suffix.lower() == ".pdf":
@@ -711,6 +783,7 @@ def embed_document(
             text = ocr_result.text
             ocr_blocks = getattr(ocr_result, "blocks", None) or None
         else:
+            embed_error = ("ocr_timeout", f"OCR timeout {settings.ocr_timeout}s")
             logger.warning(
                 "OCR failed/crashed for %s — using adapter text (%d chars)",
                 file_path.name, len(text),
@@ -730,6 +803,14 @@ def embed_document(
             logger.debug("Failed to retrieve cached text for %s", file_path.name, exc_info=True)
 
     if not text.strip():
+        # Final failure: no text from any source — record once
+        if embed_error is None:
+            embed_error = ("no_text", "No text after OCR+adapter+cache")
+        try:
+            _reg = registry if registry is not None else DocumentRegistry(db_path=settings.registry.db_path)
+            _reg.update_embed_failure(doc_record["doc_id"], embed_error[0], embed_error[1])
+        except Exception:
+            logger.debug("Failed to record embed failure", exc_info=True)
         logger.warning("No text extracted for embedding: %s", file_path.name)
         return 0
 
@@ -782,6 +863,13 @@ def embed_document(
         from doc_pipeline.storage.vectordb import VectorStore
         store = VectorStore(persist_dir=settings.chroma.persist_dir)
 
+    # 5a. Collect new chunk IDs for replace semantics
+    doc_id = doc_record["doc_id"]
+    new_chunk_ids = {c.chunk_id for c in chunks}
+
+    # 5b. Upsert new chunks into the target collection FIRST
+    # This must succeed before any cleanup — if it fails, old chunks
+    # (in either collection) remain intact for search continuity.
     if grade == SecurityGrade.B:
         store.upsert_chunks_local(chunks)
     elif grade == SecurityGrade.C:
@@ -792,7 +880,41 @@ def embed_document(
         embeddings = get_embeddings(client, [c.text for c in chunks])
         store.upsert_chunks(chunks, embeddings)
 
-    logger.info("Embedded %d chunks for doc_id=%s", len(chunks), doc_record["doc_id"])
+    # 5c. Clear opposite collection (enforce single-source-of-truth)
+    # Only runs after target upsert succeeded — prevents data loss
+    # if embedding/upsert fails (old chunks survive in opposite collection).
+    _clear_opposite_collection(store, doc_id, grade)
+
+    # 5d. Prune stale chunks in the target collection (same-grade leftovers)
+    _prune_stale_chunks(store, doc_id, new_chunk_ids)
+
+    # 5e. Sync FTS (delete all for doc → re-upsert new)
+    try:
+        from doc_pipeline.storage.vectordb import ChunkFTS
+        chunk_fts = ChunkFTS(db_path=settings.fts.db_path)
+        chunk_fts.delete_by_doc_ids([doc_id])
+        chunk_fts.upsert(chunks)
+    except Exception:
+        logger.debug("FTS sync skipped for %s", doc_id, exc_info=True)
+
+    logger.info("Embedded %d chunks for doc_id=%s", len(chunks), doc_id)
+
+    # 5f. Clear embed failure metadata on success
+    try:
+        _reg = registry if registry is not None else DocumentRegistry(db_path=settings.registry.db_path)
+        existing_meta = _reg.get_metadata(doc_id)
+        if existing_meta:
+            meta = existing_meta.get("metadata", {})
+            if "embed_error_type" in meta:
+                for key in ("embed_error_type", "embed_error_msg",
+                            "embed_attempts", "last_embed_error_at"):
+                    meta.pop(key, None)
+                _reg.save_metadata(
+                    doc_id, meta,
+                    structured=existing_meta.get("structured_fields", {}),
+                )
+    except Exception:
+        pass  # Non-critical
 
     # 6. Update registry embedded_at (reuse injected registry or create one)
     if registry is None:
@@ -804,6 +926,7 @@ def embed_document(
             registry.update_document(
                 doc_record["doc_id"],
                 embedded_at=datetime.now().isoformat(),
+                process_status="인덱싱완료",
             )
             embedded_at_updated = True
             break

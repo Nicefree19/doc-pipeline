@@ -638,3 +638,234 @@ class TestDocumentRegistry:
         years = registry.get_unique_years()
         assert years == [2024, 2023]
         assert 0 not in years
+
+    def test_delete_documents(self, registry: DocumentRegistry) -> None:
+        """delete_documents removes docs + metadata/events/feedback, returns count."""
+        for i in range(3):
+            doc = DocMaster(
+                doc_id=f"del{i:03d}",
+                file_name_original=f"del{i}.pdf",
+                doc_type=DocType.OPINION,
+            )
+            registry.insert_document(doc, source_path=f"/p/{i}")
+            registry.add_event(f"del{i:03d}", "processed", "ok")
+            registry.save_metadata(f"del{i:03d}", {"key": "value"})
+
+        deleted = registry.delete_documents(["del000", "del001"])
+        assert deleted == 2
+
+        # del002 should remain
+        assert registry.get_document("del002") is not None
+        assert registry.get_document("del000") is None
+        assert registry.get_document("del001") is None
+        # Related data also removed
+        assert registry.get_events("del000") == []
+        assert registry.get_metadata("del000") is None
+
+    def test_delete_documents_empty(self, registry: DocumentRegistry) -> None:
+        """delete_documents with empty list returns 0 and does nothing."""
+        assert registry.delete_documents([]) == 0
+
+    # ------ suggest() tests ------
+
+    def test_suggest_by_project_name(self, registry: DocumentRegistry) -> None:
+        """suggest returns project names matching the query substring."""
+        for name in ["서울역사 정밀안전진단", "서울시청 보수보강", "부산항 안전점검"]:
+            doc = DocMaster(
+                doc_id=f"sug-{name[:3]}",
+                file_name_original=f"{name}.pdf",
+                doc_type=DocType.OPINION,
+                project_name=name,
+            )
+            registry.insert_document(doc, source_path=f"/p/{name}")
+
+        results = registry.suggest("서울")
+        assert len(results) == 2
+        assert all(r["type"] == "project" for r in results)
+        assert {"서울역사 정밀안전진단", "서울시청 보수보강"} == {
+            r["text"] for r in results
+        }
+
+    def test_suggest_by_doc_type_ext(self, registry: DocumentRegistry) -> None:
+        """suggest returns doc_type_ext values matching the query."""
+        doc = DocMaster(
+            doc_id="sug-dt1",
+            file_name_original="test.pdf",
+            doc_type=DocType.OPINION,
+            doc_type_ext="안전점검보고서",
+        )
+        registry.insert_document(doc, source_path="/p/1")
+
+        results = registry.suggest("점검")
+        assert len(results) >= 1
+        doc_types = [r for r in results if r["type"] == "doc_type"]
+        assert any(r["text"] == "안전점검보고서" for r in doc_types)
+
+    def test_suggest_short_query_returns_empty(
+        self, registry: DocumentRegistry
+    ) -> None:
+        """suggest requires at least 2 chars."""
+        assert registry.suggest("") == []
+        assert registry.suggest("가") == []
+
+    def test_suggest_limit(self, registry: DocumentRegistry) -> None:
+        """suggest respects the limit parameter."""
+        for i in range(10):
+            doc = DocMaster(
+                doc_id=f"sug-lim{i:02d}",
+                file_name_original=f"test{i}.pdf",
+                doc_type=DocType.OPINION,
+                project_name=f"프로젝트-{i:02d}",
+            )
+            registry.insert_document(doc, source_path=f"/p/{i}")
+
+        results = registry.suggest("프로젝트", limit=3)
+        assert len(results) <= 3
+
+    def test_suggest_excludes_excluded_docs(
+        self, registry: DocumentRegistry
+    ) -> None:
+        """suggest must not return results from exclude_from_search=1 docs."""
+        # Insert two docs with same project name
+        for i, exclude in enumerate([0, 1]):
+            doc = DocMaster(
+                doc_id=f"sug-ex{i}",
+                file_name_original=f"ex{i}.pdf",
+                doc_type=DocType.OPINION,
+                project_name="배제테스트 프로젝트",
+            )
+            registry.insert_document(doc, source_path=f"/p/ex{i}")
+            if exclude:
+                registry.update_document(f"sug-ex{i}", exclude_from_search=1)
+
+        results = registry.suggest("배제테스트")
+        # Should find the project but count=1 (only the non-excluded doc)
+        assert len(results) == 1
+        assert results[0]["count"] == 1
+
+    def test_suggest_all_excluded_returns_empty(
+        self, registry: DocumentRegistry
+    ) -> None:
+        """If all matching docs are excluded, suggest returns nothing."""
+        doc = DocMaster(
+            doc_id="sug-allex",
+            file_name_original="allex.pdf",
+            doc_type=DocType.OPINION,
+            project_name="전부제외 프로젝트",
+        )
+        registry.insert_document(doc, source_path="/p/allex")
+        registry.update_document("sug-allex", exclude_from_search=1)
+
+        results = registry.suggest("전부제외")
+        assert results == []
+
+    def test_suggest_negative_limit_returns_empty(
+        self, registry: DocumentRegistry
+    ) -> None:
+        """suggest with limit <= 0 must return empty list."""
+        doc = DocMaster(
+            doc_id="sug-neg",
+            file_name_original="neg.pdf",
+            doc_type=DocType.OPINION,
+            project_name="음수테스트 프로젝트",
+        )
+        registry.insert_document(doc, source_path="/p/neg")
+
+        assert registry.suggest("음수테스트", limit=-1) == []
+        assert registry.suggest("음수테스트", limit=0) == []
+
+
+class TestSearchFTSPhraseFirst:
+    """search_fts uses phrase -> AND -> OR fallback strategy."""
+
+    def test_search_fts_phrase_first(self, registry: DocumentRegistry) -> None:
+        """Phrase match should rank higher than individual token OR match."""
+        d1 = DocMaster(
+            doc_id="fts-ph-1",
+            file_name_original="f1.pdf",
+            file_name_standard="2024-강릉프로젝트-의견서-001.pdf",
+            doc_type=DocType.OPINION,
+            project_name="강릉프로젝트",
+            summary="강릉시 송정동 공동주택 구조 안전성 검토",
+        )
+        d2 = DocMaster(
+            doc_id="fts-ph-2",
+            file_name_original="f2.pdf",
+            file_name_standard="2024-서울프로젝트-보고서-001.pdf",
+            doc_type=DocType.OPINION,
+            project_name="서울프로젝트",
+            summary="강릉시 다른 보고서",
+        )
+        registry.insert_document(d1, source_path="/a")
+        registry.insert_document(d2, source_path="/b")
+
+        results = registry.search_fts("강릉시 송정동")
+        assert len(results) >= 1
+        # Phrase match (d1) should appear first
+        assert results[0]["doc_id"] == "fts-ph-1"
+
+
+class TestUpdateEmbedFailure:
+    """update_embed_failure preserves structured_fields via read-modify-write."""
+
+    def test_update_embed_failure_preserves_structured(
+        self, registry: DocumentRegistry, sample_doc: DocMaster,
+    ) -> None:
+        registry.insert_document(sample_doc, source_path="/f")
+        # Save initial metadata with structured_fields
+        registry.save_metadata(
+            sample_doc.doc_id,
+            {"key": "value"},
+            structured={"field_a": "123"},
+        )
+
+        # Record an embed failure
+        registry.update_embed_failure(
+            sample_doc.doc_id, "ocr_timeout", "Timeout 300s",
+        )
+
+        # Verify structured_fields survived
+        meta = registry.get_metadata(sample_doc.doc_id)
+        assert meta is not None
+        assert meta["structured_fields"]["field_a"] == "123"
+        assert meta["metadata"]["embed_error_type"] == "ocr_timeout"
+        assert meta["metadata"]["embed_attempts"] == 1
+
+        # Record another failure — attempts should increment
+        registry.update_embed_failure(
+            sample_doc.doc_id, "no_text", "No text",
+        )
+        meta2 = registry.get_metadata(sample_doc.doc_id)
+        assert meta2 is not None
+        assert meta2["metadata"]["embed_attempts"] == 2
+        assert meta2["structured_fields"]["field_a"] == "123"
+
+
+class TestListDocumentsEmbeddedOnly:
+    """list_documents(embedded_only=True) filters at DB level."""
+
+    def test_embedded_only_excludes_unembedded(
+        self, registry: DocumentRegistry,
+    ) -> None:
+        d1 = DocMaster(
+            doc_id="emb-yes",
+            file_name_original="a.pdf",
+            doc_type=DocType.OPINION,
+            project_name="P",
+        )
+        d2 = DocMaster(
+            doc_id="emb-no",
+            file_name_original="b.pdf",
+            doc_type=DocType.OPINION,
+            project_name="P",
+        )
+        registry.insert_document(d1, source_path="/a")
+        registry.insert_document(d2, source_path="/b")
+        registry.update_document("emb-yes", embedded_at="2024-01-01T00:00:00")
+
+        all_docs = registry.list_documents(limit=100)
+        assert len(all_docs) == 2
+
+        embedded = registry.list_documents(limit=100, embedded_only=True)
+        assert len(embedded) == 1
+        assert embedded[0]["doc_id"] == "emb-yes"

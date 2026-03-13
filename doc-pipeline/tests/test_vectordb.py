@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from doc_pipeline.models.schemas import ChunkRecord, DocType, SecurityGrade
@@ -245,20 +247,36 @@ class TestSearchRRF:
         assert r.source_collection == "api"
 
 
+    def test_rrf_larger_pool(self, tmp_chromadb: str) -> None:
+        """search_rrf uses 5x candidate pool."""
+        store = VectorStore(persist_dir=tmp_chromadb)
+        chunks = [
+            _make_chunk(f"c{i}", doc_id=f"d{i}", chunk_index=0, text=f"테스트 {i}")
+            for i in range(10)
+        ]
+        embeddings = [[0.1 * (i + 1)] * 10 for i in range(10)]
+        store.add_chunks(chunks, embeddings)
+
+        # n_results=2 → internal fetch_n should be 10 (2*5)
+        results = store.search_rrf([0.1] * 10, n_results=2)
+        assert len(results) == 2
+        assert results[0].rrf_score >= results[1].rrf_score
+
+
 class TestBuildWhereClause:
-    """Test _build_where_clause with year/project filters."""
+    """Test _build_where_clause with all filter parameters."""
 
     def test_where_clause_year_filter(self) -> None:
-        clause = VectorStore._build_where_clause(None, None, None, year_filter=2024)
+        clause = VectorStore._build_where_clause(None, None, None, None, year_filter=2024)
         assert clause == {"year": 2024}
 
     def test_where_clause_project_filter(self) -> None:
-        clause = VectorStore._build_where_clause(None, None, None, project_name_filter="화성동탄")
+        clause = VectorStore._build_where_clause(None, None, None, None, project_name_filter="화성동탄")
         assert clause == {"project_name": "화성동탄"}
 
     def test_where_clause_combined_all(self) -> None:
         clause = VectorStore._build_where_clause(
-            "의견서", "구조", ["ex1"], year_filter=2024, project_name_filter="화성동탄",
+            "의견서", "구조", None, ["ex1"], year_filter=2024, project_name_filter="화성동탄",
         )
         assert "$and" in clause
         conditions = clause["$and"]
@@ -270,22 +288,179 @@ class TestBuildWhereClause:
         assert len(conditions) == 5
 
     def test_where_clause_zero_year_ignored(self) -> None:
-        clause = VectorStore._build_where_clause(None, None, None, year_filter=0)
+        clause = VectorStore._build_where_clause(None, None, None, None, year_filter=0)
         assert clause is None
 
-    def test_rrf_larger_pool(self, tmp_chromadb: str) -> None:
-        """search_rrf uses 5x candidate pool."""
-        store = VectorStore(persist_dir=tmp_chromadb)
-        # Add enough chunks to verify larger pool is requested
-        chunks = [
-            _make_chunk(f"c{i}", doc_id=f"d{i}", chunk_index=0, text=f"테스트 {i}")
-            for i in range(10)
-        ]
-        embeddings = [[0.1 * (i + 1)] * 10 for i in range(10)]
-        store.add_chunks(chunks, embeddings)
+    def test_where_clause_all_none(self) -> None:
+        """All args None returns None (no filter)."""
+        clause = VectorStore._build_where_clause(None, None, None, None)
+        assert clause is None
 
-        # n_results=2 → internal fetch_n should be 10 (2*5)
-        results = store.search_rrf([0.1] * 10, n_results=2)
-        assert len(results) == 2
-        # All 10 chunks should have been considered (verified by getting top 2)
-        assert results[0].rrf_score >= results[1].rrf_score
+    def test_where_clause_doc_type_ext_only(self) -> None:
+        """doc_type_ext_filter alone returns single condition (no $and)."""
+        clause = VectorStore._build_where_clause(None, None, "매뉴얼", None)
+        assert clause == {"doc_type_ext": "매뉴얼"}
+
+    def test_where_clause_category_only(self) -> None:
+        """category_filter alone returns single condition (no $and)."""
+        clause = VectorStore._build_where_clause(None, "구조", None, None)
+        assert clause == {"category": "구조"}
+
+    def test_where_clause_exclude_only(self) -> None:
+        """exclude_doc_ids alone returns single $nin condition."""
+        clause = VectorStore._build_where_clause(None, None, None, ["ex1"])
+        assert clause == {"doc_id": {"$nin": ["ex1"]}}
+
+
+class TestDeleteByDocIds:
+    def test_delete_by_doc_ids(self, tmp_chromadb: str) -> None:
+        """delete_by_doc_ids removes chunks for specified doc_ids."""
+        store = VectorStore(tmp_chromadb)
+        # Insert chunks for 3 doc_ids
+        for doc_id in ("d1", "d2", "d3"):
+            chunks = [_make_chunk(f"{doc_id}_0", doc_id=doc_id, text=f"text for {doc_id}")]
+            store.upsert_chunks_local(chunks)
+        assert store.count == 3
+
+        deleted = store.delete_by_doc_ids(["d1", "d2"])
+        assert deleted == 2
+        assert store.count == 1
+
+        # d3 still exists
+        remaining = store.get_chunks_by_doc_id("d3")
+        assert len(remaining) == 1
+
+    def test_delete_by_doc_ids_empty(self, tmp_chromadb: str) -> None:
+        """delete_by_doc_ids with empty list returns 0."""
+        store = VectorStore(tmp_chromadb)
+        assert store.delete_by_doc_ids([]) == 0
+
+    def test_delete_by_doc_ids_both_collections(self, tmp_chromadb: str) -> None:
+        """delete_by_doc_ids removes from both API and local collections."""
+        store = VectorStore(tmp_chromadb)
+
+        # Insert into API collection (needs embeddings)
+        api_chunk = _make_chunk("d1_api_0", doc_id="d1", text="api text")
+        store.upsert_chunks([api_chunk], [[0.1] * 384])
+
+        # Insert into local collection
+        local_chunk = _make_chunk("d1_local_0", doc_id="d1", text="local text")
+        store.upsert_chunks_local([local_chunk])
+
+        assert store._collection.count() == 1
+        assert store._local_collection.count() == 1
+        assert store.count == 2
+
+        deleted = store.delete_by_doc_ids(["d1"])
+        assert deleted == 2
+        assert store.count == 0
+
+
+class TestFTSDeleteByDocIds:
+    def test_fts_delete_by_doc_ids(self, tmp_path: Path) -> None:
+        """ChunkFTS.delete_by_doc_ids removes entries for given doc_ids."""
+        from doc_pipeline.storage.vectordb import ChunkFTS
+
+        fts = ChunkFTS(db_path=str(tmp_path / "test_fts.db"))
+
+        # Insert chunks for 3 doc_ids
+        for doc_id in ("d1", "d2", "d3"):
+            chunks = [_make_chunk(f"{doc_id}_0", doc_id=doc_id, text=f"text for {doc_id}")]
+            fts.upsert(chunks)
+        assert fts.count == 3
+
+        deleted = fts.delete_by_doc_ids(["d1", "d2"])
+        assert deleted == 2
+        assert fts.count == 1
+
+
+class TestChunkFTSPhraseFirst:
+    """ChunkFTS.search uses phrase -> AND -> OR fallback."""
+
+    def test_chunk_fts_phrase_first(self, tmp_path: Path) -> None:
+        from doc_pipeline.storage.vectordb import ChunkFTS
+
+        fts = ChunkFTS(db_path=str(tmp_path / "fts_phrase.db"))
+        c1 = _make_chunk("c1", doc_id="d1", text="강릉시 송정동 공동주택 구조검토")
+        c2 = _make_chunk("c2", doc_id="d2", text="강릉시 다른문서 내용")
+        c3 = _make_chunk("c3", doc_id="d3", text="송정동 별도 자료")
+        fts.upsert([c1, c2, c3])
+
+        results = fts.search("강릉시 송정동")
+        assert len(results) >= 1
+        # Phrase match should rank d1 highest
+        assert results[0]["doc_id"] == "d1"
+
+    def test_chunk_fts_metadata_filter(self, tmp_path: Path) -> None:
+        """project_name_filter limits results to matching chunks."""
+        from doc_pipeline.storage.vectordb import ChunkFTS
+
+        fts = ChunkFTS(db_path=str(tmp_path / "fts_filter.db"))
+        c1 = ChunkRecord(
+            chunk_id="c1", doc_id="d1", doc_type=DocType.OPINION,
+            project_name="프로젝트A", year=2024, chunk_index=0,
+            text="구조검토 의견서", security_grade=SecurityGrade.C,
+        )
+        c2 = ChunkRecord(
+            chunk_id="c2", doc_id="d2", doc_type=DocType.OPINION,
+            project_name="프로젝트B", year=2024, chunk_index=0,
+            text="구조검토 보고서", security_grade=SecurityGrade.C,
+        )
+        fts.upsert([c1, c2])
+
+        results = fts.search("구조검토", project_name_filter="프로젝트A")
+        assert len(results) == 1
+        assert results[0]["doc_id"] == "d1"
+        assert results[0]["project_name"] == "프로젝트A"
+
+    def test_chunk_fts_returns_metadata(self, tmp_path: Path) -> None:
+        """FTS results include project_name and doc_type_ext."""
+        from doc_pipeline.storage.vectordb import ChunkFTS
+
+        fts = ChunkFTS(db_path=str(tmp_path / "fts_meta.db"))
+        c1 = ChunkRecord(
+            chunk_id="c1", doc_id="d1", doc_type=DocType.OPINION,
+            doc_type_ext="구조검토의견서", project_name="테스트PJ",
+            year=2024, chunk_index=0, text="구조검토 의견서 슬래브 보강",
+            security_grade=SecurityGrade.C,
+        )
+        fts.upsert([c1])
+
+        results = fts.search("구조검토 슬래브")
+        assert len(results) == 1
+        assert results[0]["project_name"] == "테스트PJ"
+        assert results[0]["doc_type_ext"] == "구조검토의견서"
+
+
+class TestHybridFTSOnlyHitMetadata:
+    """search_hybrid fills metadata for FTS-only hits."""
+
+    def test_hybrid_fts_only_hit_metadata(self, tmp_chromadb: str, tmp_path: Path) -> None:
+        from doc_pipeline.storage.vectordb import ChunkFTS
+
+        store = VectorStore(persist_dir=tmp_chromadb)
+        fts = ChunkFTS(db_path=str(tmp_path / "fts_hybrid.db"))
+
+        # Only add to FTS (not vector store) — becomes FTS-only hit
+        c1 = ChunkRecord(
+            chunk_id="d1_0", doc_id="d1", doc_type=DocType.OPINION,
+            doc_type_ext="의견서", project_name="테스트프로젝트",
+            year=2024, chunk_index=0, text="강릉시 구조검토",
+            security_grade=SecurityGrade.B,
+        )
+        fts.upsert([c1])
+
+        # Add a different chunk to vector store so search_rrf returns something
+        c2 = _make_chunk("d2_0", doc_id="d2", text="완전 다른 문서")
+        store.upsert_chunks_local([c2])
+
+        results = store.search_hybrid(
+            [0.0] * 10, query_text="강릉시 구조검토",
+            n_results=5, chunk_fts=fts,
+        )
+
+        # Find the FTS-only hit
+        fts_hits = [r for r in results if r.doc_id == "d1"]
+        assert len(fts_hits) == 1
+        assert fts_hits[0].project_name == "테스트프로젝트"
+        assert fts_hits[0].doc_type_ext == "의견서"

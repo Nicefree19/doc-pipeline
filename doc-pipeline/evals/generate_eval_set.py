@@ -130,9 +130,12 @@ def _load_curated_jsonl(path: str | Path | None = None) -> list[dict]:
 
 
 # Domain topics for synthetic query generation (type 4)
+# Synced with canonical topics from search/query_parser.py (27 items)
 _DOMAIN_TOPICS = [
-    "균열", "보강", "내진", "처짐", "슬래브", "기둥", "기초",
-    "전단", "철골", "콘크리트", "앵커", "용접", "합성보",
+    "균열", "보강", "슬래브", "기둥", "기초", "철골", "내진",
+    "처짐", "도면", "배근", "전단", "휨", "콘크리트", "철근",
+    "앵커", "용접", "하중", "지반", "파일", "벽체", "보",
+    "옥탑", "지하", "옹벽", "데크", "합성보",
 ]
 
 
@@ -164,7 +167,12 @@ def generate_eval_set(
     Returns:
         List of query dicts ready for JSONL serialisation.
     """
-    docs = registry.list_documents(limit=max_docs, order_by="ingested_at DESC")
+    docs = registry.list_documents(
+        limit=max_docs,
+        order_by="ingested_at DESC",
+        embedded_only=True,
+        exclude_search=False,
+    )
 
     # Index project→doc_ids for project-only queries
     project_doc_ids: dict[str, list[str]] = {}
@@ -172,6 +180,14 @@ def generate_eval_set(
         pname = d.get("project_name", "")
         if pname:
             project_doc_ids.setdefault(pname, []).append(d["doc_id"])
+
+    # Index (project, type)→doc_ids for project+type queries (group-based answers)
+    project_type_doc_ids: dict[tuple[str, str], list[str]] = {}
+    for d in docs:
+        pname = d.get("project_name", "")
+        dtype = d.get("doc_type_ext") or d.get("doc_type", "")
+        if pname and dtype:
+            project_type_doc_ids.setdefault((pname, dtype), []).append(d["doc_id"])
 
     # Index year+type→doc_ids for year+type queries
     year_type_doc_ids: dict[tuple[int, str], list[str]] = {}
@@ -183,6 +199,7 @@ def generate_eval_set(
 
     queries: list[dict] = []
     seen_projects: set[str] = set()
+    seen_project_types: set[tuple[str, str]] = set()
     seen_year_types: set[tuple[int, str]] = set()
 
     for d in docs:
@@ -195,14 +212,17 @@ def generate_eval_set(
         if not project and not summary:
             continue
 
-        # 1. project + type query
+        # 1. project + type query (once per unique combo; group-based answers)
         if project and doc_type_ext:
-            queries.append({
-                "query": f"{project} {doc_type_ext}",
-                "expected_doc_ids": [doc_id],
-                "category": "synthetic",
-                "tags": ["project_type_match"],
-            })
+            pt_key = (project, doc_type_ext)
+            if pt_key not in seen_project_types:
+                seen_project_types.add(pt_key)
+                queries.append({
+                    "query": f"{project} {doc_type_ext}",
+                    "expected_doc_ids": project_type_doc_ids.get(pt_key, [doc_id]),
+                    "category": "synthetic",
+                    "tags": ["project_type_match"],
+                })
 
         # 2. summary first sentence
         if summary:
@@ -263,6 +283,14 @@ def generate_eval_set(
 
     if include_curated:
         curated = _load_curated_jsonl(curated_path)
+        # Warn about curated queries missing ground truth
+        empty_gt = [q["query"] for q in curated if not q.get("expected_doc_ids")]
+        if empty_gt:
+            logger.warning(
+                "%d curated queries have empty expected_doc_ids (will be skipped in eval): %s",
+                len(empty_gt),
+                ", ".join(f'"{q}"' for q in empty_gt[:3]) + ("..." if len(empty_gt) > 3 else ""),
+            )
         queries.extend(curated)
 
     return queries
@@ -299,22 +327,28 @@ def read_jsonl(path: str | Path) -> list[dict]:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Generate search evaluation set")
-    parser.add_argument("--db", default="data/registry.db", help="Registry DB path")
-    parser.add_argument("--output", default="evals/search_queries.jsonl", help="Output JSONL")
+    parser.add_argument("--db", default=None, help="Registry DB path (default: from settings)")
+    parser.add_argument("--output", default=None, help="Output JSONL (default: evals/search_queries.jsonl)")
     parser.add_argument("--max-docs", type=int, default=200, help="Max documents to sample")
     parser.add_argument("--no-curated", action="store_true", help="Exclude curated queries")
     args = parser.parse_args()
 
     # Lazy import to avoid loading full pipeline in eval scripts
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
+    from doc_pipeline.config import settings
     from doc_pipeline.storage.registry import DocumentRegistry
 
-    registry = DocumentRegistry(db_path=args.db)
+    # Resolve paths: explicit > settings > PROJECT_ROOT-relative default
+    _project_root = Path(__file__).resolve().parent.parent
+    db_path = args.db or settings.registry.db_path
+    output_path = args.output or str(_project_root / "evals" / "search_queries.jsonl")
+
+    registry = DocumentRegistry(db_path=db_path)
     queries = generate_eval_set(
         registry, max_docs=args.max_docs, include_curated=not args.no_curated,
     )
-    count = write_jsonl(queries, args.output)
-    print(f"Generated {count} evaluation queries → {args.output}")
+    count = write_jsonl(queries, output_path)
+    print(f"Generated {count} evaluation queries → {output_path}")
 
 
 if __name__ == "__main__":

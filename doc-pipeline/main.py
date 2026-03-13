@@ -52,11 +52,13 @@ _MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 # Lifespan — singleton initialization + dedicated thread pools
 # ---------------------------------------------------------------------------
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Initialize shared singletons at startup, cleanup on shutdown."""
     # Activate structured JSON logging (console + rotating file)
     from doc_pipeline.config.logging_config import setup_logging
+
     setup_logging(
         level=settings.logging.level,
         log_dir=settings.logging.log_dir,
@@ -128,11 +130,23 @@ async def lifespan(app: FastAPI):
         )
         logger.info(
             "QueryParser initialized (%d projects, %d type keywords)",
-            len(known_projects), len(type_keywords),
+            len(known_projects),
+            len(type_keywords),
         )
     except Exception as exc:
         logger.warning("QueryParser init failed: %s", exc)
         app.state.query_parser = None
+
+    # Chunk-level FTS index (optional, for hybrid search)
+    app.state.chunk_fts = None
+    if settings.fts.enabled:
+        try:
+            from doc_pipeline.storage.vectordb import ChunkFTS
+
+            app.state.chunk_fts = ChunkFTS(db_path=settings.fts.db_path)
+            logger.info("ChunkFTS initialized (%d chunks)", app.state.chunk_fts.count)
+        except Exception as exc:
+            logger.warning("ChunkFTS init failed (FTS disabled): %s", exc)
 
     # In production, critical services must be available
     if os.getenv("NOVA_ENV") == "production":
@@ -165,6 +179,7 @@ app = FastAPI(
 # Global exception handler — prevent stack trace leakage to clients
 # ---------------------------------------------------------------------------
 
+
 @app.exception_handler(Exception)
 async def _global_exception_handler(request: Request, exc: Exception):
     # Let FastAPI handle HTTPException with proper status codes
@@ -183,6 +198,7 @@ async def _global_exception_handler(request: Request, exc: Exception):
 
 try:
     from prometheus_fastapi_instrumentator import Instrumentator
+
     Instrumentator().instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
 except ImportError:
     pass  # prometheus-fastapi-instrumentator not installed — skip
@@ -194,6 +210,8 @@ except ImportError:
 
 _RATE_LIMIT = int(os.getenv("RATE_LIMIT_PER_MIN", "30"))  # requests/min
 _RATE_LIMIT_UPLOAD = int(os.getenv("RATE_LIMIT_UPLOAD_PER_MIN", "5"))
+# Trust X-Forwarded-For only when behind a known reverse proxy (e.g. nginx)
+_TRUST_PROXY = os.getenv("TRUST_PROXY", "false").lower() in ("1", "true", "yes")
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
@@ -210,9 +228,10 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         self._cleanup_interval = 500
 
     def _client_ip(self, request: Request) -> str:
-        forwarded = request.headers.get("X-Forwarded-For")
-        if forwarded:
-            return forwarded.split(",")[0].strip()
+        if _TRUST_PROXY:
+            forwarded = request.headers.get("X-Forwarded-For")
+            if forwarded:
+                return forwarded.split(",")[0].strip()
         return request.client.host if request.client else "unknown"
 
     def _is_allowed(self, key: str, rpm: int) -> bool:
@@ -233,8 +252,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         stale_threshold = 120.0
         with self._lock:
             stale_keys = [
-                k for k, dq in self._hits.items()
-                if not dq or dq[-1] < now - stale_threshold
+                k for k, dq in self._hits.items() if not dq or dq[-1] < now - stale_threshold
             ]
             for k in stale_keys:
                 del self._hits[k]
@@ -291,7 +309,9 @@ class RequestTimeoutMiddleware(BaseHTTPMiddleware):
         try:
             return await asyncio.wait_for(call_next(request), timeout=self.default_timeout)
         except asyncio.TimeoutError:
-            logger.warning("Request timeout: %s %s (%.0fs)", request.method, path, self.default_timeout)
+            logger.warning(
+                "Request timeout: %s %s (%.0fs)", request.method, path, self.default_timeout
+            )
             return JSONResponse(
                 status_code=504,
                 content={"detail": "요청 처리 시간이 초과되었습니다."},
@@ -341,8 +361,11 @@ async def _verify_api_key(
             api_key = auth[7:]
 
     # SSE fallback: EventSource can't send headers, accept query param
+    # Restricted to SSE streaming endpoints only to avoid key leakage via URL logs
     if not api_key and request:
-        api_key = request.query_params.get("api_key")
+        _SSE_PATHS = ("/api/search/stream",)
+        if request.url.path in _SSE_PATHS:
+            api_key = request.query_params.get("api_key")
 
     if not api_key or not secrets.compare_digest(api_key, _NOVA_API_KEY):
         raise HTTPException(status_code=401, detail="유효하지 않은 API 키입니다.")
@@ -351,6 +374,7 @@ async def _verify_api_key(
 # ---------------------------------------------------------------------------
 # Dependency helpers
 # ---------------------------------------------------------------------------
+
 
 def _get_client(request: Request):
     """Retrieve the shared Gemini client from app state."""
@@ -365,21 +389,20 @@ def _get_store(request: Request):
 def _run_in_llm(request: Request, fn, *args, **kwargs):
     """Run a blocking function in the LLM-dedicated thread pool."""
     loop = asyncio.get_running_loop()
-    return loop.run_in_executor(
-        request.app.state.llm_executor, lambda: fn(*args, **kwargs)
-    )
+    return loop.run_in_executor(request.app.state.llm_executor, lambda: fn(*args, **kwargs))
 
 
 def _run_in_pdf(request: Request, fn, *args, **kwargs):
     """Run a blocking function in the PDF-dedicated thread pool."""
     loop = asyncio.get_running_loop()
-    return loop.run_in_executor(
-        request.app.state.pdf_executor, lambda: fn(*args, **kwargs)
-    )
+    return loop.run_in_executor(request.app.state.pdf_executor, lambda: fn(*args, **kwargs))
 
 
 _WINDOWS_RESERVED = {
-    "CON", "PRN", "AUX", "NUL",
+    "CON",
+    "PRN",
+    "AUX",
+    "NUL",
     *(f"COM{i}" for i in range(1, 10)),
     *(f"LPT{i}" for i in range(1, 10)),
 }
@@ -451,7 +474,9 @@ def _copy_to_managed(src: Path, standard_name: str) -> str:
 
 
 def _update_registry_managed_path(
-    request: Request, doc_id: str, managed_path: str,
+    request: Request,
+    doc_id: str,
+    managed_path: str,
 ) -> None:
     """Update registry record with managed storage path."""
     registry = getattr(request.app.state, "registry", None)
@@ -466,6 +491,7 @@ def _update_registry_managed_path(
 # ---------------------------------------------------------------------------
 # Health check (inline — no Streamlit dependency)
 # ---------------------------------------------------------------------------
+
 
 @app.get("/api/health")
 async def health_check(request: Request):
@@ -494,6 +520,7 @@ async def root():
 # Upload — process_document in dedicated thread pool
 # ---------------------------------------------------------------------------
 
+
 @app.post("/api/upload", dependencies=[Depends(_verify_api_key)])
 async def upload_document(
     request: Request,
@@ -517,12 +544,17 @@ async def upload_document(
         # Validate file extension
         ext = Path(file_name).suffix.lower()
         if ext not in SUPPORTED_EXTENSIONS:
-            results.append({
-                "filename": file_name,
-                "error": "지원하지 않는 파일 형식입니다. (PDF, DOCX, PPTX, DOC, PPT)",
-                "skipped": True, "skip_reason": "invalid_type",
-                "chunks_stored": 0, "summary": "", "doc_info": None,
-            })
+            results.append(
+                {
+                    "filename": file_name,
+                    "error": "지원하지 않는 파일 형식입니다. (PDF, DOCX, PPTX, DOC, PPT)",
+                    "skipped": True,
+                    "skip_reason": "invalid_type",
+                    "chunks_stored": 0,
+                    "summary": "",
+                    "doc_info": None,
+                }
+            )
             continue
 
         tmp_dir = tempfile.mkdtemp(prefix="docpipe_nova_")
@@ -559,7 +591,8 @@ async def upload_document(
             if result.doc:
                 # Copy file to managed storage so it survives temp cleanup
                 managed_path = _copy_to_managed(
-                    Path(tmp_path), result.doc.file_name_standard,
+                    Path(tmp_path),
+                    result.doc.file_name_standard,
                 )
                 doc_info = {
                     "doc_id": result.doc.doc_id,
@@ -576,7 +609,9 @@ async def upload_document(
                 # Update registry with managed_path
                 if managed_path:
                     _update_registry_managed_path(
-                        request, result.doc.doc_id, managed_path,
+                        request,
+                        result.doc.doc_id,
+                        managed_path,
                     )
                 # Update query parser with new project name
                 qp = getattr(request.app.state, "query_parser", None)
@@ -620,11 +655,13 @@ async def upload_document(
 # Search — batch (POST, backward compatible)
 # ---------------------------------------------------------------------------
 
+
 class SearchRequest(BaseModel):
     query: str = Field(min_length=1, max_length=1000)
     n_results: int = Field(default=5, ge=1, le=20)
     doc_type_filter: str = "전체"
     category_filter: str = "전체"
+    doc_type_ext_filter: str = "전체"
 
 
 _MAX_CONTEXT_CHARS = 24_000  # Budget for RAG context to limit Gemini token usage
@@ -665,7 +702,10 @@ def _build_rag_context(
         # Filter excluded documents
         if doc_record and doc_record.get("exclude_from_search"):
             continue
-        # Filter by category if requested
+        # Defense-in-depth: category_filter is also applied at ChromaDB level
+        # via _build_where_clause(). This second check guards against stale
+        # ChromaDB metadata when a document's category was updated in the
+        # registry but not yet re-indexed in ChromaDB.
         if doc_record and category_filter and doc_record.get("category") != category_filter:
             continue
 
@@ -702,13 +742,22 @@ def _build_rag_context(
             "category": doc_res.category,
             "chunk_count": doc_res.chunk_count,
             "_weighted_score": weighted_score,
+            "method_name": "",
+            "file_name_original": "",
         }
 
         # Enrich with registry data
         if doc_record:
             ref["file_name_standard"] = doc_record.get("file_name_standard", "")
-            ref["source_path"] = doc_record.get("source_path", "")
+            ref["file_name_original"] = doc_record.get("file_name_original", "")
+            ref["source_path"] = doc_record.get("source_path", doc_record.get("file_path_nas", ""))
             ref["managed_path"] = doc_record.get("managed_path", "")
+
+        # Enrich with metadata json (method_name, etc.)
+        if registry:
+            meta_record = registry.get_metadata(doc_res.doc_id)
+            if meta_record and "structured_fields" in meta_record:
+                ref["method_name"] = meta_record["structured_fields"].get("method_name", "")
 
         references.append(ref)
 
@@ -741,6 +790,69 @@ def _build_rag_context(
     return references, rag_prompt
 
 
+@app.get("/api/doc-types", dependencies=[Depends(_verify_api_key)])
+async def get_doc_types(request: Request):
+    """Retrieve document categories and doc_type_ext values.
+
+    Policy: categories are derived from **corpus data only** — only categories
+    that have at least one document in the registry are returned.  This prevents
+    the UI from showing filter options that yield 0 results.
+
+    ``doc_type_exts`` and ``all_types`` come from the corpus and type_registry
+    respectively, for template/draft support.
+    """
+    from doc_pipeline.config.type_registry import get_type_registry
+
+    type_registry = get_type_registry()
+    # type_registry provides the canonical label lookup for known categories
+    base_cats_list = type_registry.get_category_types()
+    label_lookup = {c["category"]: c for c in base_cats_list}
+
+    registry = getattr(request.app.state, "registry", None)
+    categories: dict[str, dict] = {}
+    exts: list[str] = []
+
+    if registry:
+        try:
+            exts = registry.get_unique_doc_type_exts()
+            for cat in registry.get_unique_categories():
+                if cat in label_lookup:
+                    categories[cat] = label_lookup[cat]
+                else:
+                    # Corpus has a category not in YAML — include with raw label
+                    categories[cat] = {"category": cat, "label": cat, "types": []}
+        except Exception as e:
+            logger.error("Failed to retrieve doc-types from registry: %s", e)
+
+    return {
+        "status": "success",
+        "categories": categories,
+        "doc_type_exts": exts,
+        "all_types": type_registry.all_type_names,
+        "default_type": type_registry.default_type,
+    }
+
+
+@app.get("/api/suggest", dependencies=[Depends(_verify_api_key)])
+async def suggest(
+    q: str = "",
+    limit: int = Query(default=8, ge=1, le=20),  # noqa: B008
+    request: Request = None,  # type: ignore[assignment]
+):
+    """Lightweight autocomplete suggestions from corpus metadata.
+
+    Returns project names and doc_type_ext values matching the query substring.
+    Designed for debounced typeahead — fast, no AI calls, no vector search.
+    """
+    if len(q.strip()) < 2:
+        return {"suggestions": []}
+    registry = getattr(request.app.state, "registry", None)
+    if not registry:
+        return {"suggestions": []}
+    results = registry.suggest(q.strip(), limit=limit)
+    return {"suggestions": results}
+
+
 @app.post("/api/search", dependencies=[Depends(_verify_api_key)])
 async def search_documents(req: SearchRequest, request: Request):
     """Searches documents and generates an AI answer using RAG (batch response)."""
@@ -761,6 +873,11 @@ async def search_documents(req: SearchRequest, request: Request):
 
         filter_type = req.doc_type_filter if req.doc_type_filter != "전체" else None
         filter_category = req.category_filter if req.category_filter != "전체" else None
+        filter_ext = (
+            req.doc_type_ext_filter
+            if getattr(req, "doc_type_ext_filter", "전체") != "전체"
+            else None
+        )
 
         # Pre-filter excluded docs at the vector DB level
         registry = getattr(request.app.state, "registry", None)
@@ -772,14 +889,22 @@ async def search_documents(req: SearchRequest, request: Request):
                 pass
 
         qp = getattr(request.app.state, "query_parser", None)
+        chunk_fts = getattr(request.app.state, "chunk_fts", None)
         query_emb = await _run_in_llm(request, get_embeddings, client, [req.query])
         doc_results, _ = await _run_in_llm(
-            request, unified_search, store, req.query, query_emb[0],
+            request,
+            unified_search,
+            store,
+            req.query,
+            query_emb[0],
             n_results=req.n_results,
             doc_type_filter=filter_type,
             category_filter=filter_category,
+            doc_type_ext_filter=filter_ext,
             exclude_doc_ids=excluded_ids or None,
             query_parser=qp,
+            registry=registry,
+            chunk_fts=chunk_fts,
         )
 
         if not doc_results:
@@ -788,7 +913,9 @@ async def search_documents(req: SearchRequest, request: Request):
                 "references": [],
             }
 
-        references, rag_prompt = _build_rag_context(doc_results, req.query, registry=registry, category_filter=filter_category)
+        references, rag_prompt = _build_rag_context(
+            doc_results, req.query, registry=registry, category_filter=filter_category
+        )
 
         response = await _run_in_llm(
             request,
@@ -803,14 +930,13 @@ async def search_documents(req: SearchRequest, request: Request):
 
     except Exception as exc:
         logger.error("Search API Error: %s", exc)
-        raise HTTPException(
-            status_code=500, detail="검색 처리 중 오류가 발생했습니다."
-        ) from exc
+        raise HTTPException(status_code=500, detail="검색 처리 중 오류가 발생했습니다.") from exc
 
 
 # ---------------------------------------------------------------------------
 # Search SSE — streaming (GET, for React EventSource)
 # ---------------------------------------------------------------------------
+
 
 @app.get("/api/search/stream", dependencies=[Depends(_verify_api_key)])
 async def search_stream(
@@ -819,6 +945,7 @@ async def search_stream(
     n_results: int = Query(default=5, ge=1, le=20),  # noqa: B008
     doc_type_filter: str = "전체",
     category_filter: str = "전체",
+    doc_type_ext_filter: str = "전체",
 ):
     """SSE streaming search: sends references, then token-by-token LLM answer."""
     client = _get_client(request)
@@ -828,11 +955,13 @@ async def search_stream(
         raise HTTPException(status_code=503, detail="서비스가 준비되지 않았습니다.")
 
     if store.count == 0:
+
         async def empty_gen():
             yield {
                 "event": "server_error",
                 "data": "벡터 DB에 저장된 문서가 없습니다. 문서를 먼저 업로드해 주세요.",
             }
+
         return EventSourceResponse(empty_gen())
 
     async def event_generator():
@@ -842,6 +971,7 @@ async def search_stream(
             # 1. Embedding + search in LLM thread pool
             filter_type = doc_type_filter if doc_type_filter != "전체" else None
             cat_filter = category_filter if category_filter != "전체" else None
+            ext_filter = doc_type_ext_filter if doc_type_ext_filter != "전체" else None
 
             # Pre-filter excluded docs at the vector DB level
             registry = getattr(request.app.state, "registry", None)
@@ -853,14 +983,22 @@ async def search_stream(
                     pass
 
             qp = getattr(request.app.state, "query_parser", None)
+            chunk_fts = getattr(request.app.state, "chunk_fts", None)
             query_emb = await _run_in_llm(request, get_embeddings, client, [query])
             doc_results, _ = await _run_in_llm(
-                request, _unified_search, store, query, query_emb[0],
+                request,
+                _unified_search,
+                store,
+                query,
+                query_emb[0],
                 n_results=n_results,
                 doc_type_filter=filter_type,
                 category_filter=cat_filter,
+                doc_type_ext_filter=ext_filter,
                 exclude_doc_ids=excluded_ids or None,
                 query_parser=qp,
+                registry=registry,
+                chunk_fts=chunk_fts,
             )
 
             if not doc_results:
@@ -871,7 +1009,9 @@ async def search_stream(
                 return
 
             # 2. Send references
-            references, rag_prompt = _build_rag_context(doc_results, query, registry=registry, category_filter=cat_filter)
+            references, rag_prompt = _build_rag_context(
+                doc_results, query, registry=registry, category_filter=cat_filter
+            )
             yield {"event": "references", "data": json.dumps(references, ensure_ascii=False)}
 
             # 3. Gemini streaming via asyncio.Queue bridge (true token-by-token)
@@ -939,23 +1079,20 @@ async def search_stream(
 # ---------------------------------------------------------------------------
 
 
-@app.get("/api/doc-types", dependencies=[Depends(_verify_api_key)])
-async def list_doc_types():
-    """Return categorized document type list for frontend dropdowns."""
-    from doc_pipeline.config.type_registry import get_type_registry
+# [Removed doc-types duplicate route]
 
-    registry = get_type_registry()
-    return {
-        "categories": registry.get_category_types(),
-        "all_types": registry.all_type_names,
-        "default_type": registry.default_type,
+
+_SORT_COLUMNS = frozenset(
+    {
+        "file_name_standard",
+        "doc_type",
+        "project_name",
+        "year",
+        "process_status",
+        "quality_score",
+        "ingested_at",
     }
-
-
-_SORT_COLUMNS = frozenset({
-    "file_name_standard", "doc_type", "project_name", "year",
-    "process_status", "quality_score", "ingested_at",
-})
+)
 
 
 @app.get("/api/documents", dependencies=[Depends(_verify_api_key)])
@@ -982,13 +1119,25 @@ async def list_documents(
     direction = "ASC" if sort_order.lower() == "asc" else "DESC"
     order_by = f"{col} {direction}"
     docs = registry.list_documents(
-        doc_type=doc_type, doc_type_ext=doc_type_ext, project=project, year=year,
-        status=status, category=category, needs_review=needs_review,
-        limit=limit, offset=offset, order_by=order_by,
+        doc_type=doc_type,
+        doc_type_ext=doc_type_ext,
+        project=project,
+        year=year,
+        status=status,
+        category=category,
+        needs_review=needs_review,
+        limit=limit,
+        offset=offset,
+        order_by=order_by,
     )
     total = registry.count_documents(
-        doc_type=doc_type, doc_type_ext=doc_type_ext, project=project, year=year,
-        status=status, category=category, needs_review=needs_review,
+        doc_type=doc_type,
+        doc_type_ext=doc_type_ext,
+        project=project,
+        year=year,
+        status=status,
+        category=category,
+        needs_review=needs_review,
     )
     return {"documents": docs, "total": total, "limit": limit, "offset": offset}
 
@@ -1022,21 +1171,31 @@ async def export_documents(
         raise HTTPException(503, "Registry not available")
 
     docs = registry.list_documents(
-        doc_type=doc_type, doc_type_ext=doc_type_ext,
-        category=category, needs_review=needs_review,
+        doc_type=doc_type,
+        doc_type_ext=doc_type_ext,
+        category=category,
+        needs_review=needs_review,
         limit=None,
     )
 
     columns = [
-        "doc_id", "file_name_original", "file_name_standard",
-        "doc_type", "doc_type_ext", "category",
-        "project_name", "year", "process_status",
-        "quality_grade", "quality_score", "ingested_at",
+        "doc_id",
+        "file_name_original",
+        "file_name_standard",
+        "doc_type",
+        "doc_type_ext",
+        "category",
+        "project_name",
+        "year",
+        "process_status",
+        "quality_grade",
+        "quality_score",
+        "ingested_at",
     ]
 
     output = io.StringIO()
     # Write BOM for Excel UTF-8 compatibility
-    output.write('\ufeff')
+    output.write("\ufeff")
     writer = csv.DictWriter(output, fieldnames=columns, extrasaction="ignore")
     writer.writeheader()
     for doc in docs:
@@ -1051,7 +1210,9 @@ async def export_documents(
 
 
 @app.get("/api/activity/recent", dependencies=[Depends(_verify_api_key)])
-async def recent_activity(request: Request, limit: int = Query(default=20, ge=1, le=100)):  # noqa: B008
+async def recent_activity(
+    request: Request, limit: int = Query(default=20, ge=1, le=100)
+):  # noqa: B008
     """Return recent document events for the dashboard activity feed."""
     registry = getattr(request.app.state, "registry", None)
     if not registry:
@@ -1113,7 +1274,10 @@ async def get_document_preview(
         "current_page": clamped_page,
         "total_pages": total_pages,
         "content": content,
-        "chunks": [{"text": c["text"], "page_number": c["page_number"], "chunk_index": c["chunk_index"]} for c in page_chunks],
+        "chunks": [
+            {"text": c["text"], "page_number": c["page_number"], "chunk_index": c["chunk_index"]}
+            for c in page_chunks
+        ],
     }
 
 
@@ -1171,6 +1335,7 @@ async def get_document_feedback(doc_id: str, request: Request):
 # Draft
 # ---------------------------------------------------------------------------
 
+
 class DraftRequest(BaseModel):
     doc_type: str
     project_name: str
@@ -1210,9 +1375,7 @@ async def create_draft(req: DraftRequest, request: Request):
         return {"status": "success", "draft": draft, "references": ref_data}
     except Exception as exc:
         logger.error("Draft API Error: %s", exc)
-        raise HTTPException(
-            status_code=500, detail="초안 생성 중 오류가 발생했습니다."
-        ) from exc
+        raise HTTPException(status_code=500, detail="초안 생성 중 오류가 발생했습니다.") from exc
 
 
 # ---------------------------------------------------------------------------
@@ -1253,6 +1416,7 @@ async def reclassify_document(doc_id: str, req: ReclassifyRequest, request: Requ
 
     # Recompute standard filename with new classification
     from doc_pipeline.processor.pipeline import _next_standard_name
+
     managed_path = doc.get("managed_path", "")
     source_path = doc.get("source_path", "")
     ref_path = managed_path or source_path or ""
@@ -1265,7 +1429,11 @@ async def reclassify_document(doc_id: str, req: ReclassifyRequest, request: Requ
     else:
         target_dir = Path(settings.registry.managed_storage_dir)
     file_name_standard = _next_standard_name(
-        year, project_name, req.doc_type, target_dir, extension=extension,
+        year,
+        project_name,
+        req.doc_type,
+        target_dir,
+        extension=extension,
     )
 
     # Rename physical managed file to keep disk & registry in sync
@@ -1279,7 +1447,9 @@ async def reclassify_document(doc_id: str, req: ReclassifyRequest, request: Requ
                 new_managed_path = str(new_managed)
             except OSError:
                 logging.getLogger(__name__).warning(
-                    "Failed to rename managed file %s", old_managed.name, exc_info=True,
+                    "Failed to rename managed file %s",
+                    old_managed.name,
+                    exc_info=True,
                 )
 
     # Build update fields

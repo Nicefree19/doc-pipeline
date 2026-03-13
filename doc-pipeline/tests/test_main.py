@@ -57,6 +57,7 @@ def mock_store():
     ]
     store.search.return_value = _default_results
     store.search_rrf.return_value = _default_results
+    store.search_hybrid.return_value = _default_results
     return store
 
 
@@ -184,6 +185,7 @@ class TestSearchBatch:
     def test_search_no_results(self, app_client, mock_store):
         mock_store.search.return_value = []
         mock_store.search_rrf.return_value = []
+        mock_store.search_hybrid.return_value = []
         resp = app_client.post("/api/search", json={"query": "존재하지않는검색어"})
         assert resp.status_code == 200
         assert "찾지 못했습니다" in resp.json()["answer"]
@@ -245,6 +247,7 @@ class TestSearchSSE:
     def test_sse_no_results(self, app_client, mock_store):
         mock_store.search.return_value = []
         mock_store.search_rrf.return_value = []
+        mock_store.search_hybrid.return_value = []
         resp = app_client.get("/api/search/stream", params={"query": "빈결과"})
         assert resp.status_code == 200
         events = _parse_sse(resp.text)
@@ -613,10 +616,112 @@ class TestAPIKeyAuth:
         })
         assert resp.status_code == 401
 
+    def test_suggest_requires_auth(self, auth_client):
+        """GET /api/suggest without API key should return 401."""
+        resp = auth_client.get("/api/suggest", params={"q": "test"})
+        assert resp.status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# Suggest API (autocomplete)
+# ---------------------------------------------------------------------------
+
+
+class TestSuggestAPI:
+    """Test /api/suggest endpoint."""
+
+    def _insert_docs(self, app_client):
+        from doc_pipeline.models.schemas import DocMaster, DocType
+        from main import app
+
+        for i, (name, ext) in enumerate([
+            ("서울역사 정밀안전진단", "안전점검보고서"),
+            ("서울시청 보수보강", "의견서"),
+            ("부산항 안전점검", "안전점검보고서"),
+        ]):
+            doc = DocMaster(
+                doc_id=f"sug{i:03d}",
+                file_name_original=f"test{i}.pdf",
+                doc_type=DocType.OPINION,
+                project_name=name,
+                doc_type_ext=ext,
+            )
+            app.state.registry.insert_document(doc, source_path=f"/p/{i}")
+
+    def test_suggest_returns_projects(self, app_client):
+        self._insert_docs(app_client)
+        resp = app_client.get("/api/suggest", params={"q": "서울"})
+        assert resp.status_code == 200
+        suggestions = resp.json()["suggestions"]
+        projects = [s for s in suggestions if s["type"] == "project"]
+        assert len(projects) == 2
+
+    def test_suggest_returns_doc_types(self, app_client):
+        self._insert_docs(app_client)
+        resp = app_client.get("/api/suggest", params={"q": "점검"})
+        assert resp.status_code == 200
+        suggestions = resp.json()["suggestions"]
+        doc_types = [s for s in suggestions if s["type"] == "doc_type"]
+        assert len(doc_types) >= 1
+
+    def test_suggest_short_query_empty(self, app_client):
+        resp = app_client.get("/api/suggest", params={"q": "가"})
+        assert resp.status_code == 200
+        assert resp.json()["suggestions"] == []
+
+    def test_suggest_empty_query(self, app_client):
+        resp = app_client.get("/api/suggest", params={"q": ""})
+        assert resp.status_code == 200
+        assert resp.json()["suggestions"] == []
+
+    def test_suggest_limit(self, app_client):
+        self._insert_docs(app_client)
+        resp = app_client.get("/api/suggest", params={"q": "서울", "limit": 1})
+        assert resp.status_code == 200
+        assert len(resp.json()["suggestions"]) <= 1
+
+    def test_suggest_negative_limit_rejected(self, app_client):
+        """limit=-1 should be rejected by FastAPI Query validation."""
+        resp = app_client.get("/api/suggest", params={"q": "서울", "limit": -1})
+        assert resp.status_code == 422
+
+    def test_suggest_zero_limit_rejected(self, app_client):
+        """limit=0 should be rejected (ge=1)."""
+        resp = app_client.get("/api/suggest", params={"q": "서울", "limit": 0})
+        assert resp.status_code == 422
+
+    def test_suggest_over_max_limit_rejected(self, app_client):
+        """limit=999 should be rejected (le=20)."""
+        resp = app_client.get("/api/suggest", params={"q": "서울", "limit": 999})
+        assert resp.status_code == 422
+
+    def test_suggest_excludes_excluded_docs(self, app_client):
+        """Excluded docs should not appear in suggest results."""
+        from doc_pipeline.models.schemas import DocMaster, DocType
+        from main import app
+
+        for i in range(2):
+            doc = DocMaster(
+                doc_id=f"sugex{i}",
+                file_name_original=f"ex{i}.pdf",
+                doc_type=DocType.OPINION,
+                project_name="제외검증 프로젝트",
+            )
+            app.state.registry.insert_document(doc, source_path=f"/ex/{i}")
+        # Exclude one doc
+        app.state.registry.update_document("sugex1", exclude_from_search=1)
+
+        resp = app_client.get("/api/suggest", params={"q": "제외검증"})
+        assert resp.status_code == 200
+        suggestions = resp.json()["suggestions"]
+        assert len(suggestions) == 1
+        assert suggestions[0]["count"] == 1
+
 
 # ---------------------------------------------------------------------------
 # Document Registry API
 # ---------------------------------------------------------------------------
+
 
 class TestDocumentsAPI:
     """Test /api/documents endpoints."""
@@ -1246,19 +1351,23 @@ class TestProductionAPIKeyEnforcement:
                 with TestClient(main.app, raise_server_exceptions=True):
                     pass
 
-    def test_production_with_api_key_ok(self, mock_client, mock_store, mock_registry):
+    def test_production_with_api_key_ok(self, mock_client, mock_store, mock_registry, tmp_path):
         """Lifespan should not raise when NOVA_API_KEY is set in production."""
         import main
+        from doc_pipeline.config.settings import settings
 
-        with (
-            patch.dict(os.environ, {"NOVA_ENV": "production", "NOVA_API_KEY": "test-key"}, clear=False),
-            patch.object(main, "create_client", return_value=mock_client),
-        ):
-            with TestClient(main.app, raise_server_exceptions=True) as client:
-                main.app.state.gemini_client = mock_client
-                main.app.state.vector_store = mock_store
-                resp = client.get("/")
-                assert resp.status_code == 200
+        original_dir = settings.chroma.persist_dir
+        settings.chroma.persist_dir = str(tmp_path / "chroma_prod")
+        try:
+            with (
+                patch.dict(os.environ, {"NOVA_ENV": "production", "NOVA_API_KEY": "test-key"}, clear=False),
+                patch.object(main, "create_client", return_value=mock_client),
+            ):
+                with TestClient(main.app, raise_server_exceptions=True) as client:
+                    resp = client.get("/")
+                    assert resp.status_code == 200
+        finally:
+            settings.chroma.persist_dir = original_dir
 
 
 # ---------------------------------------------------------------------------
@@ -1269,17 +1378,23 @@ class TestProductionAPIKeyEnforcement:
 class TestProductionServiceValidation:
     """Critical services must be available in production."""
 
-    def test_production_gemini_unavailable_raises(self):
+    def test_production_gemini_unavailable_raises(self, tmp_path):
         """Lifespan should SystemExit when Gemini client fails in production."""
         import main
+        from doc_pipeline.config.settings import settings
 
-        with (
-            patch.dict(os.environ, {"NOVA_ENV": "production", "NOVA_API_KEY": "test"}, clear=False),
-            patch.object(main, "create_client", side_effect=RuntimeError("fail")),
-        ):
-            with pytest.raises((SystemExit, Exception)):
-                with TestClient(main.app, raise_server_exceptions=True):
-                    pass
+        original_dir = settings.chroma.persist_dir
+        settings.chroma.persist_dir = str(tmp_path / "chroma_gemini_fail")
+        try:
+            with (
+                patch.dict(os.environ, {"NOVA_ENV": "production", "NOVA_API_KEY": "test"}, clear=False),
+                patch.object(main, "create_client", side_effect=RuntimeError("fail")),
+            ):
+                with pytest.raises((SystemExit, Exception)):
+                    with TestClient(main.app, raise_server_exceptions=True):
+                        pass
+        finally:
+            settings.chroma.persist_dir = original_dir
 
 
 # ---------------------------------------------------------------------------

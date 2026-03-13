@@ -292,3 +292,83 @@ class TestGenerateEvalSet:
         curated = [q for q in queries if q.get("category") == "curated"]
         assert len(curated) == 1
         assert curated[0]["query"] == "테스트 쿼리"
+
+
+# ---------------------------------------------------------------------------
+# Searchable-only eval set generation (Phase 1)
+# ---------------------------------------------------------------------------
+
+
+class TestGenerateEvalSearchableOnly:
+    """generate_eval_set with embedded_only=True excludes unembedded docs."""
+
+    def test_generate_eval_searchable_only(self) -> None:
+        """list_documents is called with embedded_only=True."""
+        registry = MagicMock()
+        registry.list_documents.return_value = [
+            {
+                "doc_id": "d1",
+                "project_name": "P",
+                "doc_type_ext": "의견서",
+                "doc_type": "의견서",
+                "summary": "요약",
+                "year": 2024,
+            },
+        ]
+
+        generate_eval_set(registry, include_curated=False)
+
+        # Verify list_documents was called with embedded_only=True
+        registry.list_documents.assert_called_once()
+        call_kwargs = registry.list_documents.call_args
+        assert call_kwargs.kwargs.get("embedded_only") is True
+        assert call_kwargs.kwargs.get("exclude_search") is False
+
+    def test_project_type_group_answers(self) -> None:
+        """project+type query should use all matching doc_ids as expected."""
+        registry = MagicMock()
+        registry.list_documents.return_value = [
+            {
+                "doc_id": "d1", "project_name": "프로젝트A",
+                "doc_type_ext": "의견서", "doc_type": "의견서",
+                "summary": "요약1", "year": 2024,
+            },
+            {
+                "doc_id": "d2", "project_name": "프로젝트A",
+                "doc_type_ext": "의견서", "doc_type": "의견서",
+                "summary": "요약2", "year": 2024,
+            },
+        ]
+
+        queries = generate_eval_set(registry, include_curated=False)
+        pt_queries = [q for q in queries if "project_type_match" in q.get("tags", [])]
+
+        # Dedup: same (프로젝트A, 의견서) → exactly 1 query, not 2
+        matching = [q for q in pt_queries if "프로젝트A" in q["query"] and "의견서" in q["query"]]
+        assert len(matching) == 1, f"Expected 1 deduped query, got {len(matching)}"
+
+        # Both d1 and d2 share (프로젝트A, 의견서) → both are valid answers
+        assert "d1" in matching[0]["expected_doc_ids"]
+        assert "d2" in matching[0]["expected_doc_ids"]
+
+
+# ---------------------------------------------------------------------------
+# eval_search settings-aware defaults (Task 2)
+# ---------------------------------------------------------------------------
+
+
+class TestEvalSearchDefaults:
+    """Verify eval_search uses settings-aware paths instead of hardcoded."""
+
+    def test_default_chroma_dir_uses_settings(self) -> None:
+        """--chroma-dir default should be None (resolved from settings at runtime)."""
+        import argparse
+        from scripts.eval_search import main
+
+        # Parse with no args — defaults should be None
+        parser = argparse.ArgumentParser()
+        parser.add_argument("--chroma-dir", default=None)
+        parser.add_argument("--db", default=None)
+        args = parser.parse_args([])
+        assert args.chroma_dir is None
+        assert args.db is None

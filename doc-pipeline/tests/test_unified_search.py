@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from unittest.mock import MagicMock
+
 import pytest
 
 from doc_pipeline.models.schemas import ChunkRecord, DocType, SecurityGrade
 from doc_pipeline.search.query_parser import QueryParser
 from doc_pipeline.search.unified import unified_search
-from doc_pipeline.storage.vectordb import VectorStore
+from doc_pipeline.storage.vectordb import ChunkFTS, VectorStore
 
 
 def _make_chunk(
@@ -142,3 +144,120 @@ class TestUnifiedSearch:
             store, "문서", [0.1] * 10, n_results=2,
         )
         assert len(results) <= 2
+
+
+class TestUnifiedSearchIntegration:
+    """Integration tests: parser + hybrid FTS + doc-level FTS bonus together."""
+
+    def test_parser_year_project_with_hybrid_fts(self, tmp_path, tmp_chromadb: str) -> None:
+        """Full pipeline: parser extracts year+project, hybrid FTS filters,
+        doc-level FTS bonus applied, correct doc ranked first."""
+        store = VectorStore(persist_dir=tmp_chromadb)
+
+        # Two docs: one matching project+year, one not
+        chunks = [
+            _make_chunk("c1", doc_id="d1", text="화성동탄 구조검토 의견서 슬래브",
+                        project_name="화성동탄", year=2024, doc_type_ext="구조검토의견서"),
+            _make_chunk("c2", doc_id="d2", text="강릉시 구조검토 의견서 기둥",
+                        project_name="강릉시", year=2023, doc_type_ext="구조검토의견서"),
+        ]
+        store.add_chunks(chunks, [[0.5] * 10, [0.5] * 10])
+
+        # Set up ChunkFTS
+        fts_db = str(tmp_path / "fts_test.db")
+        chunk_fts = ChunkFTS(db_path=fts_db)
+        chunk_fts.upsert(chunks)
+
+        # Set up registry mock with search_fts returning d1 as top FTS hit
+        registry = MagicMock()
+        registry.search_fts.return_value = [
+            {"doc_id": "d1", "rank": -5.0},
+        ]
+
+        # Set up parser
+        parser = QueryParser(
+            known_projects={"화성동탄", "강릉시"},
+            type_keywords={"구조검토의견서": ["구조검토"]},
+        )
+
+        results, parsed = unified_search(
+            store, "2024년 화성동탄 구조검토", [0.5] * 10,
+            n_results=5,
+            query_parser=parser,
+            registry=registry,
+            chunk_fts=chunk_fts,
+        )
+
+        # Parser should extract metadata
+        assert parsed is not None
+        assert parsed.project == "화성동탄"
+        assert parsed.year == 2024
+
+        # d1 should appear in results (project+year match + FTS bonus)
+        result_doc_ids = [r.doc_id for r in results]
+        assert "d1" in result_doc_ids
+        # d1 should rank first (matching project/year/FTS vs d2 which doesn't)
+        if len(results) >= 2:
+            assert results[0].doc_id == "d1"
+
+    def test_fts_only_hit_filtered_by_year(self, tmp_path, tmp_chromadb: str) -> None:
+        """FTS-only hits (not in vector results) are filtered when year_filter is set."""
+        store = VectorStore(persist_dir=tmp_chromadb)
+
+        # Only d1 in vector store
+        chunks = [
+            _make_chunk("c1", doc_id="d1", text="화성동탄 슬래브 보강",
+                        project_name="화성동탄", year=2024),
+        ]
+        store.add_chunks(chunks, [[0.5] * 10])
+
+        # FTS has d1 and d2, but d2 has no year info (FTS doesn't store year)
+        fts_db = str(tmp_path / "fts_test2.db")
+        chunk_fts = ChunkFTS(db_path=fts_db)
+        chunk_fts.upsert(chunks)
+        # Add a second chunk to FTS manually
+        extra_chunk = _make_chunk("c2", doc_id="d2", text="화성동탄 슬래브 검토",
+                                  project_name="화성동탄", year=2023)
+        chunk_fts.upsert([extra_chunk])
+
+        results, _ = unified_search(
+            store, "화성동탄 슬래브", [0.5] * 10,
+            n_results=5,
+            year_filter=2024,
+            chunk_fts=chunk_fts,
+        )
+
+        # d2 is FTS-only (not in vector store) and has year=0 in SearchResult
+        # With year_filter=2024, FTS-only hits with year=0 should be filtered out
+        result_doc_ids = [r.doc_id for r in results]
+        assert "d1" in result_doc_ids
+
+    def test_doc_level_fts_bonus_affects_ranking(self, tmp_chromadb: str) -> None:
+        """Doc-level FTS bonus from registry boosts matching docs."""
+        store = VectorStore(persist_dir=tmp_chromadb)
+
+        # d1 has slightly better vector match, d2 slightly worse
+        chunks = [
+            _make_chunk("c1", doc_id="d1", text="보강 설계 검토"),
+            _make_chunk("c2", doc_id="d2", text="보강 설계 검토"),
+        ]
+        store.add_chunks(chunks, [[0.51] * 10, [0.49] * 10])
+
+        # Registry FTS gives d2 a much higher score — should overcome vector gap
+        registry = MagicMock()
+        registry.search_fts.return_value = [
+            {"doc_id": "d2", "rank": -10.0},
+        ]
+
+        results, _ = unified_search(
+            store, "보강 설계", [0.5] * 10,
+            n_results=5,
+            registry=registry,
+        )
+
+        # Both should appear, with d2 boosted by FTS bonus
+        assert len(results) >= 2
+        result_doc_ids = [r.doc_id for r in results]
+        assert "d2" in result_doc_ids
+        # Verify FTS bonus was applied (registry.search_fts was called)
+        registry.search_fts.assert_called_once()

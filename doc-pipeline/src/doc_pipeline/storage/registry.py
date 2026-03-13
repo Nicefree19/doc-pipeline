@@ -411,6 +411,7 @@ class DocumentRegistry:
         category: str | None = None,
         exclude_search: bool | None = None,
         needs_review: bool | None = None,
+        embedded_only: bool | None = None,
         limit: int | None = 50,
         offset: int = 0,
         order_by: str = "ingested_at DESC",
@@ -446,6 +447,8 @@ class DocumentRegistry:
             params.append(int(exclude_search))
         if needs_review is True:
             clauses.append("quality_score < 30 AND quality_score >= 0")
+        if embedded_only is True:
+            clauses.append("embedded_at IS NOT NULL AND length(embedded_at) > 0")
 
         where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
         # Whitelist order_by to prevent SQL injection
@@ -544,10 +547,50 @@ class DocumentRegistry:
         finally:
             conn.close()
 
+    # --- Embed failure tracking ---
+
+    def update_embed_failure(self, doc_id: str, error_type: str, error_msg: str) -> None:
+        """Record embedding failure, preserving existing metadata/structured_fields.
+
+        Uses read-modify-write to prevent INSERT OR REPLACE from clobbering
+        structured_fields.
+        """
+        existing = self.get_metadata(doc_id)
+        if existing:
+            meta = existing.get("metadata", {})
+            structured = existing.get("structured_fields", {})
+        else:
+            meta = {}
+            structured = {}
+
+        meta["embed_error_type"] = error_type
+        meta["embed_error_msg"] = error_msg[:500]
+        meta["embed_attempts"] = meta.get("embed_attempts", 0) + 1
+        meta["last_embed_error_at"] = datetime.now().isoformat()
+
+        self.save_metadata(doc_id, meta, structured=structured)
+
     # --- FTS5 Search ---
 
-    def search_fts(self, query: str, *, limit: int = 20) -> list[dict]:
-        """Search documents using FTS5 full-text search.
+    @staticmethod
+    def _build_fts_queries(tokens: list[str]) -> list[str]:
+        """Build FTS5 queries in order: phrase -> AND -> OR."""
+        queries: list[str] = []
+        if len(tokens) >= 2:
+            queries.append('"' + " ".join(tokens) + '"')  # phrase
+        queries.append(" AND ".join(f'"{t}"' for t in tokens))  # AND
+        queries.append(" OR ".join(f'"{t}"' for t in tokens))   # OR
+        return queries
+
+    def search_fts(
+        self,
+        query: str,
+        *,
+        limit: int = 20,
+        project_name: str | None = None,
+        year: int | None = None,
+    ) -> list[dict]:
+        """Search documents using FTS5 full-text search with phrase-first strategy.
 
         Returns list of {doc_id, rank, project_name, doc_type_ext, summary_snippet}.
         """
@@ -558,29 +601,46 @@ class DocumentRegistry:
         if not tokens:
             return []
 
-        fts_query = " OR ".join(f'"{t}"' for t in tokens)
+        # Build WHERE clause for metadata filters (joined from documents table)
+        extra_joins = ""
+        extra_where = ""
+        extra_params: list[Any] = []
+        if project_name or (year and year > 0):
+            extra_joins = " JOIN documents d ON documents_fts.doc_id = d.doc_id"
+            parts: list[str] = []
+            if project_name:
+                parts.append("d.project_name = ?")
+                extra_params.append(project_name)
+            if year and year > 0:
+                parts.append("d.year = ?")
+                extra_params.append(year)
+            extra_where = " AND " + " AND ".join(parts)
 
         conn = self._connect()
         try:
-            rows = conn.execute(
-                "SELECT doc_id, rank, project_name, doc_type_ext, "
-                "snippet(documents_fts, 1, '<b>', '</b>', '...', 32) "
-                "FROM documents_fts "
-                "WHERE documents_fts MATCH ? "
-                "ORDER BY rank "
-                "LIMIT ?",
-                (fts_query, limit),
-            ).fetchall()
-            return [
-                {
-                    "doc_id": r[0],
-                    "rank": r[1],
-                    "project_name": r[2],
-                    "doc_type_ext": r[3],
-                    "summary_snippet": r[4],
-                }
-                for r in rows
-            ]
+            for fts_query in self._build_fts_queries(tokens):
+                rows = conn.execute(
+                    "SELECT documents_fts.doc_id, rank, "
+                    "documents_fts.project_name, documents_fts.doc_type_ext, "
+                    "snippet(documents_fts, 1, '<b>', '</b>', '...', 32) "
+                    f"FROM documents_fts{extra_joins} "
+                    f"WHERE documents_fts MATCH ?{extra_where} "
+                    "ORDER BY rank "
+                    "LIMIT ?",
+                    (fts_query, *extra_params, limit),
+                ).fetchall()
+                if rows:
+                    return [
+                        {
+                            "doc_id": r[0],
+                            "rank": r[1],
+                            "project_name": r[2],
+                            "doc_type_ext": r[3],
+                            "summary_snippet": r[4],
+                        }
+                        for r in rows
+                    ]
+            return []
         except Exception:
             logger.warning("FTS5 search failed", exc_info=True)
             return []
@@ -950,6 +1010,47 @@ class DocumentRegistry:
             self._retry_on_lock(_reset)
         return result_count
 
+    def delete_documents(self, doc_ids: list[str]) -> int:
+        """Delete documents and all related records. Returns count deleted."""
+        if not doc_ids:
+            return 0
+        result_count = 0
+
+        def _delete() -> None:
+            nonlocal result_count
+            conn = self._connect()
+            try:
+                placeholders = ",".join("?" for _ in doc_ids)
+                for table in (
+                    "document_feedback",
+                    "document_events",
+                    "document_metadata",
+                ):
+                    conn.execute(
+                        f"DELETE FROM {table} WHERE doc_id IN ({placeholders})",  # noqa: S608
+                        doc_ids,
+                    )
+                # Also remove from doc-level FTS
+                try:
+                    conn.execute(
+                        f"DELETE FROM documents_fts WHERE doc_id IN ({placeholders})",
+                        doc_ids,
+                    )
+                except Exception:
+                    pass  # FTS may not exist
+                cursor = conn.execute(
+                    f"DELETE FROM documents WHERE doc_id IN ({placeholders})",  # noqa: S608
+                    doc_ids,
+                )
+                result_count = cursor.rowcount
+                conn.commit()
+            finally:
+                conn.close()
+
+        with self._write_lock:
+            self._retry_on_lock(_delete)
+        return result_count
+
     def get_unique_projects(self) -> list[str]:
         """Return all distinct non-empty project names."""
         conn = self._connect()
@@ -973,6 +1074,61 @@ class DocumentRegistry:
                 "ORDER BY year DESC",
             ).fetchall()
             return [r["year"] for r in rows]
+        finally:
+            conn.close()
+
+    def suggest(self, query: str, *, limit: int = 8) -> list[dict[str, Any]]:
+        """Return autocomplete suggestions from corpus metadata.
+
+        Searches project_name and doc_type_ext for substring matches.
+        Returns list of {text, type, count} sorted by frequency.
+        """
+        if not query or len(query.strip()) < 2:
+            return []
+        if limit < 1:
+            return []
+        q = query.strip()
+        pattern = f"%{q}%"
+        conn = self._connect()
+        try:
+            results: list[dict[str, Any]] = []
+            # Only suggest from searchable documents
+            _searchable = "AND (exclude_from_search IS NULL OR exclude_from_search = 0)"
+            # Project names containing query
+            rows = conn.execute(
+                "SELECT project_name, COUNT(*) as cnt FROM documents "
+                "WHERE project_name IS NOT NULL AND project_name != '' "
+                f"AND project_name LIKE ? {_searchable} "
+                "GROUP BY project_name ORDER BY cnt DESC LIMIT ?",
+                (pattern, limit),
+            ).fetchall()
+            for r in rows:
+                results.append(
+                    {"text": r["project_name"], "type": "project", "count": r["cnt"]}
+                )
+            # Doc type ext containing query
+            rows = conn.execute(
+                "SELECT doc_type_ext, COUNT(*) as cnt FROM documents "
+                "WHERE doc_type_ext IS NOT NULL AND doc_type_ext != '' "
+                f"AND doc_type_ext LIKE ? {_searchable} "
+                "GROUP BY doc_type_ext ORDER BY cnt DESC LIMIT ?",
+                (pattern, limit),
+            ).fetchall()
+            for r in rows:
+                results.append(
+                    {"text": r["doc_type_ext"], "type": "doc_type", "count": r["cnt"]}
+                )
+            # Sort by count descending, deduplicate, and trim to limit
+            seen: set[str] = set()
+            deduped: list[dict[str, Any]] = []
+            for item in sorted(results, key=lambda x: x["count"], reverse=True):
+                if item["text"] not in seen:
+                    seen.add(item["text"])
+                    deduped.append(item)
+            return deduped[:limit]
+        except Exception:
+            logger.warning("suggest() query failed", exc_info=True)
+            return []
         finally:
             conn.close()
 
