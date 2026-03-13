@@ -7,15 +7,15 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field
 
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
+
 # Only load .env in non-CI environments to prevent real keys leaking in CI
 if not os.getenv("CI") and os.getenv("NOVA_ENV") != "ci":
     try:
         from dotenv import load_dotenv
-        load_dotenv()
+        load_dotenv(PROJECT_ROOT / ".env")
     except ImportError:
         pass  # python-dotenv is optional in production/CI
-
-PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 
 
 def _resolve_path(raw: str) -> str:

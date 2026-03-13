@@ -231,33 +231,41 @@ class TestUnifiedSearchIntegration:
         # With year_filter=2024, FTS-only hits with year=0 should be filtered out
         result_doc_ids = [r.doc_id for r in results]
         assert "d1" in result_doc_ids
+        assert "d2" not in result_doc_ids, "FTS-only hit with year=0 should be filtered by year_filter=2024"
 
     def test_doc_level_fts_bonus_affects_ranking(self, tmp_chromadb: str) -> None:
         """Doc-level FTS bonus from registry boosts matching docs."""
         store = VectorStore(persist_dir=tmp_chromadb)
 
-        # d1 has slightly better vector match, d2 slightly worse
+        # d1 closer to query embedding, d2 further away
         chunks = [
             _make_chunk("c1", doc_id="d1", text="보강 설계 검토"),
             _make_chunk("c2", doc_id="d2", text="보강 설계 검토"),
         ]
-        store.add_chunks(chunks, [[0.51] * 10, [0.49] * 10])
+        # d1 gets better vector match (closer embedding)
+        store.add_chunks(chunks, [[0.50] * 10, [0.90] * 10])
 
-        # Registry FTS gives d2 a much higher score — should overcome vector gap
+        # Without FTS bonus: verify d1 ranks first (baseline)
+        results_no_fts, _ = unified_search(
+            store, "보강 설계", [0.50] * 10,
+            n_results=5,
+        )
+        assert len(results_no_fts) >= 2
+        assert results_no_fts[0].doc_id == "d1", "Without FTS bonus, d1 should rank first"
+
+        # With FTS bonus: registry strongly favors d2
         registry = MagicMock()
         registry.search_fts.return_value = [
             {"doc_id": "d2", "rank": -10.0},
         ]
 
-        results, _ = unified_search(
-            store, "보강 설계", [0.5] * 10,
+        results_with_fts, _ = unified_search(
+            store, "보강 설계", [0.50] * 10,
             n_results=5,
             registry=registry,
         )
 
-        # Both should appear, with d2 boosted by FTS bonus
-        assert len(results) >= 2
-        result_doc_ids = [r.doc_id for r in results]
-        assert "d2" in result_doc_ids
-        # Verify FTS bonus was applied (registry.search_fts was called)
+        # d2 should now rank first thanks to FTS bonus overcoming vector gap
+        assert len(results_with_fts) >= 2
+        assert results_with_fts[0].doc_id == "d2", "FTS bonus should push d2 to rank 1"
         registry.search_fts.assert_called_once()

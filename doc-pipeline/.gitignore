@@ -1,0 +1,29 @@
+# Environment & Secrets
+.env
+config/service_account.json
+certs/
+
+# Data (local only)
+data/chromadb/
+data/processed/
+data/samples/*.pdf
+
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+dist/
+build/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log
+
+# Override parent *.jsonl ignore for eval artifacts
+!evals/*.jsonl

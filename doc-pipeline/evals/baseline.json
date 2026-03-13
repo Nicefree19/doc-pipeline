@@ -1,0 +1,28 @@
+{
+  "total_queries": 159,
+  "Hit@1": 0.6918,
+  "Hit@3": 0.7296,
+  "Hit@5": 0.7358,
+  "MRR": 0.7122,
+  "nDCG@5": 0.7141,
+  "judged_query_count": 159,
+  "skipped_query_count": 1,
+  "by_category": {
+    "synthetic": {
+      "total_queries": 145,
+      "Hit@1": 0.7586,
+      "Hit@3": 0.8,
+      "Hit@5": 0.8069,
+      "MRR": 0.7787,
+      "nDCG@5": 0.783
+    },
+    "curated": {
+      "total_queries": 14,
+      "Hit@1": 0.0,
+      "Hit@3": 0.0,
+      "Hit@5": 0.0,
+      "MRR": 0.0,
+      "nDCG@5": 0.0
+    }
+  }
+}

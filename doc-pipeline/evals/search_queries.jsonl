@@ -1,0 +1,160 @@
+{"query": "이천시 설성면 암산리 물류센터 신축공사 조치계획서", "expected_doc_ids": ["7f494a1c"], "category": "synthetic", "tags": ["project_type_match"]}
+{"query": "이천시 설성면 암산리 물류센터 신축공사는 PEB 구조를 사용하며, 건축위원회 심의에서 지적된 보완사항에 대한 조치 계획을 담고 있습니다", "expected_doc_ids": ["7f494a1c"], "category": "synthetic", "tags": ["summary_match"]}
+{"query": "이천시 설성면 암산리 물류센터 신축공사", "expected_doc_ids": ["7f494a1c"], "category": "synthetic", "tags": ["project_match"]}
+{"query": "이천시 설성면 암산리 물류센터 신축공사 처짐", "expected_doc_ids": ["7f494a1c"], "category": "synthetic", "tags": ["topic_project_match"]}
+{"query": "2023년 조치계획서", "expected_doc_ids": ["7f494a1c", "88347dfa"], "category": "synthetic", "tags": ["year_type_match"]}
+{"query": "처짐 보", "expected_doc_ids": ["7f494a1c"], "category": "synthetic", "tags": ["keyword_extract"]}
+{"query": "이천쌀문화축제 조치계획서", "expected_doc_ids": ["88347dfa"], "category": "synthetic", "tags": ["project_type_match"]}
+{"query": "이 문서는 \"제22회 이천쌀문화축제\"와 관련된 이천시의 건축구조분야 전문위원회 심의조치계획서 검토 결과 통보서입니다", "expected_doc_ids": ["88347dfa"], "category": "synthetic", "tags": ["summary_match"]}
+{"query": "이천쌀문화축제", "expected_doc_ids": ["88347dfa"], "category": "synthetic", "tags": ["project_match"]}
+{"query": "이천쌀문화축제 보", "expected_doc_ids": ["88347dfa"], "category": "synthetic", "tags": ["topic_project_match"]}
+{"query": "미분류 의견서", "expected_doc_ids": ["ff1214ae", "81b40bb1"], "category": "synthetic", "tags": ["project_type_match"]}
+{"query": "미분류", "expected_doc_ids": ["ff1214ae", "81b40bb1"], "category": "synthetic", "tags": ["project_match"]}
+{"query": "테스트 의견서", "expected_doc_ids": ["60dc949f"], "category": "synthetic", "tags": ["project_type_match"]}
+{"query": "테스트", "expected_doc_ids": ["60dc949f"], "category": "synthetic", "tags": ["project_match"]}
+{"query": "2024년 의견서", "expected_doc_ids": ["60dc949f", "640f1d7d"], "category": "synthetic", "tags": ["year_type_match"]}
+{"query": "테스트프로젝트 의견서", "expected_doc_ids": ["640f1d7d"], "category": "synthetic", "tags": ["project_type_match"]}
+{"query": "요약 텍스트", "expected_doc_ids": ["640f1d7d"], "category": "synthetic", "tags": ["summary_match"]}
+{"query": "테스트프로젝트", "expected_doc_ids": ["640f1d7d"], "category": "synthetic", "tags": ["project_match"]}
+{"query": "데이터 센터 모듈 제안 검토 SEP 2020  TSC+PSRC    ---    Contents 제안 개요 제안 공법 상세 제안 공법 공사비 산정 4", "expected_doc_ids": ["31afd73e"], "category": "synthetic", "tags": ["summary_match"]}
+{"query": "기둥 콘크리트 보", "expected_doc_ids": ["31afd73e"], "category": "synthetic", "tags": ["keyword_extract"]}
+{"query": "데이터 센터 모듈 제안 검토 SEP 2020  TSC+PSRC    ---    Contents 제안 개요 제안 공법 상세 제안 공법 공사비 산정 4", "expected_doc_ids": ["d51cae35"], "category": "synthetic", "tags": ["summary_match"]}
+{"query": "기둥 보", "expected_doc_ids": ["d51cae35"], "category": "synthetic", "tags": ["keyword_extract"]}
+{"query": "삼성 SDS 동탄 데이터센터 대안공법 비교 JULY 2020  TSC+PSRC    ---    Contents 제안 개요 대안 공법 상세 대안 공법 공사비 산정 4", "expected_doc_ids": ["2765b24d"], "category": "synthetic", "tags": ["summary_match"]}
+{"query": "기둥 보", "expected_doc_ids": ["2765b24d"], "category": "synthetic", "tags": ["keyword_extract"]}
+{"query": "C6A  C6B  C6  C6  C6  C6  C2  C2  C2  C2  C2  C2  TSG12  TSG5  TSG5  TSG5  TSG5  TSG5  TSG5  TSG5  TSG5  TSG5  TSG5  TSB5  TSB5  TSB5  TSB5  TSB5  TSB5  TSB5  TSB5  TSB5  TSB5  TSCG1  NOTE", "expected_doc_ids": ["7fdac936"], "category": "synthetic", "tags": ["summary_match"]}
+{"query": "기둥 보", "expected_doc_ids": ["7fdac936"], "category": "synthetic", "tags": ["keyword_extract"]}
+{"query": "기둥 보", "expected_doc_ids": ["59aac444"], "category": "synthetic", "tags": ["keyword_extract"]}
+{"query": "P9 PROJECT 기술제안 2015", "expected_doc_ids": ["0f50858f"], "category": "synthetic", "tags": ["summary_match"]}
+{"query": "철골 보 합성보", "expected_doc_ids": ["0f50858f"], "category": "synthetic", "tags": ["keyword_extract"]}
+{"query": "기둥 철골 콘크리트", "expected_doc_ids": ["70cd3787"], "category": "synthetic", "tags": ["keyword_extract"]}
+{"query": "SEN\u000bINNOVATIVE\u000bVALUE\u000bENGINEERING\u000bSOLUTIONS SMD A3 PROJECT 상층부 클린룸 격자보 기술제안 (노광기, ELA 구간) 2012", "expected_doc_ids": ["4083b1fa"], "category": "synthetic", "tags": ["summary_match"]}
+{"query": "기둥 보", "expected_doc_ids": ["4083b1fa"], "category": "synthetic", "tags": ["keyword_extract"]}
+{"query": "SEN\u000bINNOVATIVE\u000bVALUE\u000bENGINEERING\u000bSOLUTIONS SMD A3 PROJECT 상층부 클린룸 격자보 구간 2012", "expected_doc_ids": ["9ea0ed4d"], "category": "synthetic", "tags": ["summary_match"]}
+{"query": "기둥 철골 보", "expected_doc_ids": ["9ea0ed4d"], "category": "synthetic", "tags": ["keyword_extract"]}
+{"query": "[ CONTENTS ] 공법 비교 제안 모듈 및 단면 비교 공사비 비교    ---    ---  공법 시스템 비교 구 분 | RC보 + RC기둥 | TSC보 + CFT기둥 개념도 및 단면형상 구조 | 보 | 400x700, 500x700 (BxH)  400x400, 500x500 | 700x400x4", "expected_doc_ids": ["e83f0f1d"], "category": "synthetic", "tags": ["summary_match"]}
+{"query": "기둥 철골 콘크리트", "expected_doc_ids": ["e83f0f1d"], "category": "synthetic", "tags": ["keyword_extract"]}
+{"query": "CONFIDENTIAL ⓒLG Display Co", "expected_doc_ids": ["9eb59e9c"], "category": "synthetic", "tags": ["summary_match"]}
+{"query": "기둥 철골 콘크리트", "expected_doc_ids": ["9eb59e9c"], "category": "synthetic", "tags": ["keyword_extract"]}
+{"query": "A2 클린룸(격자보) 보강 공사  ---  Use/loading of the platform, equipment, operation or maintenance, etc", "expected_doc_ids": ["a8dcaab4"], "category": "synthetic", "tags": ["summary_match"]}
+{"query": "보강 보", "expected_doc_ids": ["a8dcaab4"], "category": "synthetic", "tags": ["keyword_extract"]}
+{"query": "CONFIDENTIAL ⓒ LG Display Co", "expected_doc_ids": ["8efdf3e4"], "category": "synthetic", "tags": ["summary_match"]}
+{"query": "보강 보", "expected_doc_ids": ["8efdf3e4"], "category": "synthetic", "tags": ["keyword_extract"]}
+{"query": "파주 P9 진동 보강 제안 1", "expected_doc_ids": ["cca80982"], "category": "synthetic", "tags": ["summary_match"]}
+{"query": "보강 철골 앵커", "expected_doc_ids": ["cca80982"], "category": "synthetic", "tags": ["keyword_extract"]}
+{"query": "T-PROJECT 제안서 CFT+TSC 공법 보강 공사 제안  2016", "expected_doc_ids": ["b7ac11fb"], "category": "synthetic", "tags": ["summary_match"]}
+{"query": "보강 기둥 보", "expected_doc_ids": ["b7ac11fb"], "category": "synthetic", "tags": ["keyword_extract"]}
+{"query": "A2 클린룸(격자보) 보강 공사  ---  목차  ---   1", "expected_doc_ids": ["43ed93b9"], "category": "synthetic", "tags": ["summary_match"]}
+{"query": "보강 기둥 기초", "expected_doc_ids": ["43ed93b9"], "category": "synthetic", "tags": ["keyword_extract"]}
+{"query": "구미 E5 CR1F SUB STRUCTURE 2016", "expected_doc_ids": ["3642d6da"], "category": "synthetic", "tags": ["summary_match"]}
+{"query": "철골 콘크리트 철근", "expected_doc_ids": ["3642d6da"], "category": "synthetic", "tags": ["keyword_extract"]}
+{"query": "6차 보고 과업 형태 : 용역보고 용역대상 : P10 DATE : 2015", "expected_doc_ids": ["15adf506"], "category": "synthetic", "tags": ["summary_match"]}
+{"query": "보강 보", "expected_doc_ids": ["15adf506"], "category": "synthetic", "tags": ["keyword_extract"]}
+{"query": "SEN\u000bINNOVATIVE\u000bVALUE\u000bENGINEERING\u000bSOLUTIONS 2020", "expected_doc_ids": ["9829e9c7"], "category": "synthetic", "tags": ["summary_match"]}
+{"query": "철골 배근 콘크리트", "expected_doc_ids": ["9829e9c7"], "category": "synthetic", "tags": ["keyword_extract"]}
+{"query": "율도1구마을 고분도선착장간 도로확장공사 중 옹벽 구조검토 계약서", "expected_doc_ids": ["6546cac3"], "category": "synthetic", "tags": ["project_type_match"]}
+{"query": "율도1구마을 고분도선착장간 도로확장공사 중 옹벽 구조검토", "expected_doc_ids": ["6546cac3"], "category": "synthetic", "tags": ["project_match"]}
+{"query": "2025년 계약서", "expected_doc_ids": ["6546cac3", "cd4e43fb", "41014a66", "065dbe22", "f7175b0f", "be73f8da", "6a62d94b", "45836d8c", "c55bce65", "be4b4816", "9f9058f1", "69b08dab", "ee11aab1", "d6b5c8a4", "ab8c498d", "c0d6008c", "af133754", "a281a134", "1512b613", "1be5b9ed", "f9b47e9a", "6a5b7668", "3504329b", "dfe4d4ba", "c393b45b", "8e890c15", "61ab14c8", "6b3d8f89", "ce24b5b2", "10bd5918", "72f3da1f", "71eeb51e", "60ee60db", "65ce1705", "5ab77100", "1d8c7780", "46a4c9b2", "4575cb48", "1f8c921a", "c97bac5f", "72fea21d", "f67c4243", "33325905", "862c02d5", "1f695100"], "category": "synthetic", "tags": ["year_type_match"]}
+{"query": "수원시 권선구 세류동 1154-19 현장 데크플레이트 구조검토용역 계약서", "expected_doc_ids": ["cd4e43fb"], "category": "synthetic", "tags": ["project_type_match"]}
+{"query": "수원시 권선구 세류동 1154-19 현장 데크플레이트 구조검토용역", "expected_doc_ids": ["cd4e43fb"], "category": "synthetic", "tags": ["project_match"]}
+{"query": "휴스틸 군산공장 신축공사 중 X16-X18열 기초재설계 계약서", "expected_doc_ids": ["41014a66"], "category": "synthetic", "tags": ["project_type_match"]}
+{"query": "휴스틸 군산공장 신축공사 중 X16-X18열 기초재설계", "expected_doc_ids": ["41014a66"], "category": "synthetic", "tags": ["project_match"]}
+{"query": "경기도 부천시 도당동 58-2 정남프라자 4층 용도변경 구조검토 계약서", "expected_doc_ids": ["065dbe22"], "category": "synthetic", "tags": ["project_type_match"]}
+{"query": "경기도 부천시 도당동 58-2 정남프라자 4층 용도변경 구조검토", "expected_doc_ids": ["065dbe22"], "category": "synthetic", "tags": ["project_match"]}
+{"query": "조선호텔 소공사옥 지상 1층 및 지하  1층 플랫 슬래브 안전성 검토 계약서", "expected_doc_ids": ["f7175b0f"], "category": "synthetic", "tags": ["project_type_match"]}
+{"query": "조선호텔 소공사옥 지상 1층 및 지하  1층 플랫 슬래브 안전성 검토", "expected_doc_ids": ["f7175b0f"], "category": "synthetic", "tags": ["project_match"]}
+{"query": "주식회사엠지에프비 익산공장 신축공사 계약서", "expected_doc_ids": ["be73f8da"], "category": "synthetic", "tags": ["project_type_match"]}
+{"query": "주식회사엠지에프비 익산공장 신축공사", "expected_doc_ids": ["be73f8da"], "category": "synthetic", "tags": ["project_match"]}
+{"query": "강릉회산동 공동주택 신축공사 중 건축구조 현장기술지원 용역 계약서", "expected_doc_ids": ["6a62d94b"], "category": "synthetic", "tags": ["project_type_match"]}
+{"query": "강릉회산동 공동주택 신축공사 중 건축구조 현장기술지원 용역", "expected_doc_ids": ["6a62d94b"], "category": "synthetic", "tags": ["project_match"]}
+{"query": "용답동 주택재개발 정비사업 신축공사 - 데크플레이트 추가계약 계약서", "expected_doc_ids": ["45836d8c"], "category": "synthetic", "tags": ["project_type_match"]}
+{"query": "용답동 주택재개발 정비사업 신축공사 - 데크플레이트 추가계약", "expected_doc_ids": ["45836d8c"], "category": "synthetic", "tags": ["project_match"]}
+{"query": "서둔동 행정복지센터 신축공사 관계전문기술자 협력업무 계약서", "expected_doc_ids": ["c55bce65"], "category": "synthetic", "tags": ["project_type_match"]}
+{"query": "서둔동 행정복지센터 신축공사 관계전문기술자 협력업무", "expected_doc_ids": ["c55bce65"], "category": "synthetic", "tags": ["project_match"]}
+{"query": "역삼동 닥터리본 사옥의 파사드 지지부재(2차부재 계약서", "expected_doc_ids": ["be4b4816"], "category": "synthetic", "tags": ["project_type_match"]}
+{"query": "역삼동 닥터리본 사옥의 파사드 지지부재(2차부재", "expected_doc_ids": ["be4b4816"], "category": "synthetic", "tags": ["project_match"]}
+{"query": "천안 빙과라인 통합공사 설계 현장지원 계약서", "expected_doc_ids": ["9f9058f1"], "category": "synthetic", "tags": ["project_type_match"]}
+{"query": "천안 빙과라인 통합공사 설계 현장지원", "expected_doc_ids": ["9f9058f1"], "category": "synthetic", "tags": ["project_match"]}
+{"query": "평택 전자 Precon 구조설계 (복합동 계약서", "expected_doc_ids": ["69b08dab"], "category": "synthetic", "tags": ["project_type_match"]}
+{"query": "평택 전자 Precon 구조설계 (복합동", "expected_doc_ids": ["69b08dab"], "category": "synthetic", "tags": ["project_match"]}
+{"query": "SM글로벌 물류창고 신축공사 계약서", "expected_doc_ids": ["ee11aab1"], "category": "synthetic", "tags": ["project_type_match"]}
+{"query": "SM글로벌 물류창고 신축공사", "expected_doc_ids": ["ee11aab1"], "category": "synthetic", "tags": ["project_match"]}
+{"query": "인천 검단신도시 AA28BL 공동주택 신축공사 현장지원 계약서", "expected_doc_ids": ["d6b5c8a4"], "category": "synthetic", "tags": ["project_type_match"]}
+{"query": "인천 검단신도시 AA28BL 공동주택 신축공사 현장지원", "expected_doc_ids": ["d6b5c8a4"], "category": "synthetic", "tags": ["project_match"]}
+{"query": "천안 성정동 공공지원 민간임대주택 신축공사 계약서", "expected_doc_ids": ["ab8c498d"], "category": "synthetic", "tags": ["project_type_match"]}
+{"query": "천안 성정동 공공지원 민간임대주택 신축공사", "expected_doc_ids": ["ab8c498d"], "category": "synthetic", "tags": ["project_match"]}
+{"query": "힐스테이트 청량리 메트로블 신축공사 주동부 PIT 벽체 OPEN 보강안 검토 계약서", "expected_doc_ids": ["c0d6008c"], "category": "synthetic", "tags": ["project_type_match"]}
+{"query": "힐스테이트 청량리 메트로블 신축공사 주동부 PIT 벽체 OPEN 보강안 검토", "expected_doc_ids": ["c0d6008c"], "category": "synthetic", "tags": ["project_match"]}
+{"query": "서둔동 행정복지센터 신축공사 내 기초파일 두부 파손 구조검토 계약서", "expected_doc_ids": ["af133754"], "category": "synthetic", "tags": ["project_type_match"]}
+{"query": "서둔동 행정복지센터 신축공사 내 기초파일 두부 파손 구조검토", "expected_doc_ids": ["af133754"], "category": "synthetic", "tags": ["project_match"]}
+{"query": "경기도 안양시 만안구 안양동 391-27외 4필지 오피스텔 신축공사 설계변경 구조검토 계약서", "expected_doc_ids": ["a281a134"], "category": "synthetic", "tags": ["project_type_match"]}
+{"query": "경기도 안양시 만안구 안양동 391-27외 4필지 오피스텔 신축공사 설계변경 구조검토", "expected_doc_ids": ["a281a134"], "category": "synthetic", "tags": ["project_match"]}
+{"query": "동천배수지 증축공사 계약서", "expected_doc_ids": ["1512b613"], "category": "synthetic", "tags": ["project_type_match"]}
+{"query": "동천배수지 증축공사", "expected_doc_ids": ["1512b613"], "category": "synthetic", "tags": ["project_match"]}
+{"query": "수원고등지구 근생 신축공사 중 계단구조검토 계약서", "expected_doc_ids": ["1be5b9ed"], "category": "synthetic", "tags": ["project_type_match"]}
+{"query": "수원고등지구 근생 신축공사 중 계단구조검토", "expected_doc_ids": ["1be5b9ed"], "category": "synthetic", "tags": ["project_match"]}
+{"query": "노량진 청년주택-3 신축공사 구조 현장기술지원 계약서", "expected_doc_ids": ["f9b47e9a"], "category": "synthetic", "tags": ["project_type_match"]}
+{"query": "노량진 청년주택-3 신축공사 구조 현장기술지원", "expected_doc_ids": ["f9b47e9a"], "category": "synthetic", "tags": ["project_match"]}
+{"query": "홍천읍 갈마곡리 공동주택 신축공사 지하주차장 슬래브 변경 구조검토 계약서", "expected_doc_ids": ["6a5b7668"], "category": "synthetic", "tags": ["project_type_match"]}
+{"query": "홍천읍 갈마곡리 공동주택 신축공사 지하주차장 슬래브 변경 구조검토", "expected_doc_ids": ["6a5b7668"], "category": "synthetic", "tags": ["project_match"]}
+{"query": "울산시 우정동 지역주택조합 아파트 건설공사 계약서", "expected_doc_ids": ["3504329b"], "category": "synthetic", "tags": ["project_type_match"]}
+{"query": "울산시 우정동 지역주택조합 아파트 건설공사", "expected_doc_ids": ["3504329b"], "category": "synthetic", "tags": ["project_match"]}
+{"query": "충북선 고속화 건설사업 노반(1공구 계약서", "expected_doc_ids": ["dfe4d4ba"], "category": "synthetic", "tags": ["project_type_match"]}
+{"query": "충북선 고속화 건설사업 노반(1공구", "expected_doc_ids": ["dfe4d4ba"], "category": "synthetic", "tags": ["project_match"]}
+{"query": "자양동 251-77 근린생활시설 신축공사 인허가 및 실시설계(설계변경 계약서", "expected_doc_ids": ["c393b45b"], "category": "synthetic", "tags": ["project_type_match"]}
+{"query": "자양동 251-77 근린생활시설 신축공사 인허가 및 실시설계(설계변경", "expected_doc_ids": ["c393b45b"], "category": "synthetic", "tags": ["project_match"]}
+{"query": "고덕비즈밸리 유통판매 1BL 복합시설 신축공사 지하1층 O열, 11-13열 하역장 경사로 변경 계약서", "expected_doc_ids": ["8e890c15"], "category": "synthetic", "tags": ["project_type_match"]}
+{"query": "고덕비즈밸리 유통판매 1BL 복합시설 신축공사 지하1층 O열, 11-13열 하역장 경사로 변경", "expected_doc_ids": ["8e890c15"], "category": "synthetic", "tags": ["project_match"]}
+{"query": "서부장애인복지관 건립공사 GC DECK 구조검토용역 계약서", "expected_doc_ids": ["61ab14c8"], "category": "synthetic", "tags": ["project_type_match"]}
+{"query": "서부장애인복지관 건립공사 GC DECK 구조검토용역", "expected_doc_ids": ["61ab14c8"], "category": "synthetic", "tags": ["project_match"]}
+{"query": "미추1구역 주택재개발 정비사업 옥탑면적 변경 구조검토 계약서", "expected_doc_ids": ["6b3d8f89"], "category": "synthetic", "tags": ["project_type_match"]}
+{"query": "미추1구역 주택재개발 정비사업 옥탑면적 변경 구조검토", "expected_doc_ids": ["6b3d8f89"], "category": "synthetic", "tags": ["project_match"]}
+{"query": "포항 광역 해상교통관제(VTS 계약서", "expected_doc_ids": ["ce24b5b2"], "category": "synthetic", "tags": ["project_type_match"]}
+{"query": "포항 광역 해상교통관제(VTS", "expected_doc_ids": ["ce24b5b2"], "category": "synthetic", "tags": ["project_match"]}
+{"query": "인천광역시 미추홀구 도화동 987-4 근린생활시설 신축공사 계약서", "expected_doc_ids": ["10bd5918"], "category": "synthetic", "tags": ["project_type_match"]}
+{"query": "인천광역시 미추홀구 도화동 987-4 근린생활시설 신축공사", "expected_doc_ids": ["10bd5918"], "category": "synthetic", "tags": ["project_match"]}
+{"query": "화성 비봉지구 101-2 노유자시설 신축공사 구조설계변경 계약서", "expected_doc_ids": ["72f3da1f"], "category": "synthetic", "tags": ["project_type_match"]}
+{"query": "화성 비봉지구 101-2 노유자시설 신축공사 구조설계변경", "expected_doc_ids": ["72f3da1f"], "category": "synthetic", "tags": ["project_match"]}
+{"query": "제진역 연결통로 기초파일 변경에 따른 구조검토 계약서", "expected_doc_ids": ["71eeb51e"], "category": "synthetic", "tags": ["project_type_match"]}
+{"query": "제진역 연결통로 기초파일 변경에 따른 구조검토", "expected_doc_ids": ["71eeb51e"], "category": "synthetic", "tags": ["project_match"]}
+{"query": "제주 더샵 연동애비뉴 신축공사-기초보강재 구조검토 계약서", "expected_doc_ids": ["60ee60db"], "category": "synthetic", "tags": ["project_type_match"]}
+{"query": "제주 더샵 연동애비뉴 신축공사-기초보강재 구조검토", "expected_doc_ids": ["60ee60db"], "category": "synthetic", "tags": ["project_match"]}
+{"query": "고강동 삼우아파트 외 가로주택정비사업 현장지원 계약서", "expected_doc_ids": ["65ce1705"], "category": "synthetic", "tags": ["project_type_match"]}
+{"query": "고강동 삼우아파트 외 가로주택정비사업 현장지원", "expected_doc_ids": ["65ce1705"], "category": "synthetic", "tags": ["project_match"]}
+{"query": "한국콜마(주 계약서", "expected_doc_ids": ["5ab77100"], "category": "synthetic", "tags": ["project_type_match"]}
+{"query": "한국콜마(주", "expected_doc_ids": ["5ab77100"], "category": "synthetic", "tags": ["project_match"]}
+{"query": "평택시 합정동 970-1 주상복합 신축공사 구조감리 계약서", "expected_doc_ids": ["1d8c7780"], "category": "synthetic", "tags": ["project_type_match"]}
+{"query": "평택시 합정동 970-1 주상복합 신축공사 구조감리", "expected_doc_ids": ["1d8c7780"], "category": "synthetic", "tags": ["project_match"]}
+{"query": "평택시 합정동 970-20 주상복합 신축공사 구조분야 VE설계 계약서", "expected_doc_ids": ["46a4c9b2"], "category": "synthetic", "tags": ["project_type_match"]}
+{"query": "평택시 합정동 970-20 주상복합 신축공사 구조분야 VE설계", "expected_doc_ids": ["46a4c9b2"], "category": "synthetic", "tags": ["project_match"]}
+{"query": "군포시 벌터.마벨지구 B-1블럭 공동주택 신축공사 계약서", "expected_doc_ids": ["4575cb48"], "category": "synthetic", "tags": ["project_type_match"]}
+{"query": "군포시 벌터.마벨지구 B-1블럭 공동주택 신축공사", "expected_doc_ids": ["4575cb48"], "category": "synthetic", "tags": ["project_match"]}
+{"query": "고강동 삼우아파트, 성원주택, 수정빌라 가로주택정비사업 DECK PLATE 구조검토 계약서", "expected_doc_ids": ["1f8c921a"], "category": "synthetic", "tags": ["project_type_match"]}
+{"query": "고강동 삼우아파트, 성원주택, 수정빌라 가로주택정비사업 DECK PLATE 구조검토", "expected_doc_ids": ["1f8c921a"], "category": "synthetic", "tags": ["project_match"]}
+{"query": "대림3동 공공복합청사 데크플레이트 구조계산 계약서", "expected_doc_ids": ["c97bac5f"], "category": "synthetic", "tags": ["project_type_match"]}
+{"query": "대림3동 공공복합청사 데크플레이트 구조계산", "expected_doc_ids": ["c97bac5f"], "category": "synthetic", "tags": ["project_match"]}
+{"query": "하남시 덕풍스포츠 문화센터 대수선공사 중 물탱크하중 구조검토용역 계약서", "expected_doc_ids": ["72fea21d"], "category": "synthetic", "tags": ["project_type_match"]}
+{"query": "하남시 덕풍스포츠 문화센터 대수선공사 중 물탱크하중 구조검토용역", "expected_doc_ids": ["72fea21d"], "category": "synthetic", "tags": ["project_match"]}
+{"query": "청주농고 창업교육융합관 치장벽돌 비구조요소 내진설계 계약서", "expected_doc_ids": ["f67c4243"], "category": "synthetic", "tags": ["project_type_match"]}
+{"query": "청주농고 창업교육융합관 치장벽돌 비구조요소 내진설계", "expected_doc_ids": ["f67c4243"], "category": "synthetic", "tags": ["project_match"]}
+{"query": "오리온 진천신공장 구조VE 컨설팅 계약서", "expected_doc_ids": ["33325905"], "category": "synthetic", "tags": ["project_type_match"]}
+{"query": "오리온 진천신공장 구조VE 컨설팅", "expected_doc_ids": ["33325905"], "category": "synthetic", "tags": ["project_match"]}
+{"query": "한남동 연립주택 신축공사 지하1층 외벽 두께 변경 검토 계약서", "expected_doc_ids": ["862c02d5"], "category": "synthetic", "tags": ["project_type_match"]}
+{"query": "한남동 연립주택 신축공사 지하1층 외벽 두께 변경 검토", "expected_doc_ids": ["862c02d5"], "category": "synthetic", "tags": ["project_match"]}
+{"query": "필리핀 전기 P6 신축공사 구조설계(구조검토 계약서", "expected_doc_ids": ["1f695100"], "category": "synthetic", "tags": ["project_type_match"]}
+{"query": "필리핀 전기 P6 신축공사 구조설계(구조검토", "expected_doc_ids": ["1f695100"], "category": "synthetic", "tags": ["project_match"]}
+{"query": "슬래브 균열 보강 방법", "expected_doc_ids": [], "category": "curated", "tags": ["topic_match"]}
+{"query": "기둥 내진 보강 설계", "expected_doc_ids": [], "category": "curated", "tags": ["topic_match"]}
+{"query": "구조 안전성 검토 의견서", "expected_doc_ids": [], "category": "curated", "tags": ["type_match"]}
+{"query": "철골 접합부 상세", "expected_doc_ids": [], "category": "curated", "tags": ["topic_match"]}
+{"query": "기초 구조 검토", "expected_doc_ids": [], "category": "curated", "tags": ["topic_match"]}
+{"query": "내진 성능 평가 보고서", "expected_doc_ids": [], "category": "curated", "tags": ["type_match"]}
+{"query": "콘크리트 강도 시험 결과", "expected_doc_ids": [], "category": "curated", "tags": ["topic_match"]}
+{"query": "구조설계 변경 사유", "expected_doc_ids": [], "category": "curated", "tags": ["topic_match"]}
+{"query": "심의 지적사항 조치계획", "expected_doc_ids": [], "category": "curated", "tags": ["type_match"]}
+{"query": "프리스트레스 긴장력 계산", "expected_doc_ids": [], "category": "curated", "tags": ["topic_match"]}
+{"query": "보 단면 검토", "expected_doc_ids": [], "category": "curated", "tags": ["topic_match"]}
+{"query": "화성동탄 아파트 구조 검토", "expected_doc_ids": [], "category": "curated", "tags": ["project_match"]}
+{"query": "용역 계약서 계약금액", "expected_doc_ids": [], "category": "curated", "tags": ["type_match"]}
+{"query": "지하주차장 슬래브 처짐", "expected_doc_ids": [], "category": "curated", "tags": ["topic_match"]}
+{"query": "탄소섬유 보강 시공", "expected_doc_ids": [], "category": "curated", "tags": ["topic_match"]}
