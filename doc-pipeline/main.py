@@ -149,6 +149,23 @@ async def lifespan(app: FastAPI):
         except Exception as exc:
             logger.warning("ChunkFTS init failed (FTS disabled): %s", exc)
 
+    # PydanticAI agent availability check
+    if settings.agents.enabled:
+        try:
+            import pydantic_ai  # noqa: F401
+
+            logger.info(
+                "PydanticAI agents enabled (model=%s, temp=%s)",
+                settings.agents.model,
+                settings.agents.temperature,
+            )
+        except ImportError:
+            logger.critical(
+                "AGENT_ENABLED=true but pydantic-ai not installed. "
+                "Install: pip install doc-pipeline[agents]"
+            )
+            raise SystemExit(1)
+
     # In production, critical services must be available
     if os.getenv("NOVA_ENV") == "production":
         if app.state.gemini_client is None:
@@ -944,6 +961,7 @@ async def search_documents(req: SearchRequest, request: Request):
                     search_profile=req.search_profile,
                 )
                 agent = get_search_agent()
+                await _run_in_llm(request, _rate_limit)
                 result = await agent.run(req.query, deps=deps)
                 answer_obj = result.output
                 return {
@@ -1077,12 +1095,33 @@ async def search_stream(
                         references=references, search_profile=search_profile,
                     )
                     agent = get_search_agent()
+                    await _run_in_llm(request, _rate_limit)
                     async with agent.run_stream(query, deps=deps) as stream_result:
                         async for token in stream_result.stream_text(delta=True):
                             if await request.is_disconnected():
                                 logger.info("SSE client disconnected, cancelling stream")
                                 return
                             yield {"event": "token", "data": token}
+
+                        # Emit structured metadata after streaming completes
+                        try:
+                            final = stream_result.output
+                            if hasattr(final, "citations"):
+                                meta = {
+                                    "citations": [c.model_dump() for c in final.citations],
+                                    "confidence": final.confidence,
+                                    "follow_up": final.follow_up,
+                                }
+                                yield {
+                                    "event": "answer_meta",
+                                    "data": json.dumps(meta, ensure_ascii=False),
+                                }
+                        except Exception:
+                            logger.debug(
+                                "Could not extract structured output from stream",
+                                exc_info=True,
+                            )
+
                     yield {"event": "done", "data": ""}
                     _use_legacy = False
                 except Exception:

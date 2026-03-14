@@ -16,6 +16,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from evals.generate_eval_set import generate_eval_set, read_jsonl, write_jsonl
 from scripts.eval_search import (
     EvalReport,
+    _run_agent_citation_eval,
+    citation_precision,
+    citation_recall,
     evaluate,
     hit_at_k,
     ndcg_at_k,
@@ -148,6 +151,43 @@ class TestEvalReport:
         rows = report.false_positive_docs(category="curated", top_n=2)
         assert rows[0]["doc_id"] == "d1"
         assert rows[0]["count"] == 2
+
+
+class TestCitationMetrics:
+    def test_precision_all_relevant(self) -> None:
+        assert citation_precision(["a", "b"], ["a", "b", "c"]) == 1.0
+
+    def test_precision_half_relevant(self) -> None:
+        assert citation_precision(["a", "x"], ["a", "b"]) == 0.5
+
+    def test_precision_empty_cited(self) -> None:
+        assert citation_precision([], ["a"]) == 0.0
+
+    def test_recall_all_cited(self) -> None:
+        assert citation_recall(["a", "b"], ["a", "b"]) == 1.0
+
+    def test_recall_half_cited(self) -> None:
+        assert citation_recall(["a"], ["a", "b"]) == 0.5
+
+    def test_recall_empty_expected(self) -> None:
+        assert citation_recall(["a"], []) == 0.0
+
+    def test_recall_none_cited(self) -> None:
+        assert citation_recall(["x"], ["a", "b"]) == 0.0
+
+    def test_report_add_citation(self) -> None:
+        report = EvalReport()
+        report.add("q1", ["a"], ["a"])
+        report.add_citation(["a"], ["a", "b"])
+        s = report.summary()
+        assert s["CitePrecision"] == 1.0
+        assert s["CiteRecall"] == 0.5
+
+    def test_report_summary_no_citations(self) -> None:
+        report = EvalReport()
+        report.add("q1", ["a"], ["a"])
+        s = report.summary()
+        assert "CitePrecision" not in s
 
 
 class TestEvaluate:
@@ -405,6 +445,97 @@ class TestGenerateEvalSearchableOnly:
 # ---------------------------------------------------------------------------
 # eval_search settings-aware defaults (Task 2)
 # ---------------------------------------------------------------------------
+
+
+class TestAgentCitationEval:
+    """Tests for _run_agent_citation_eval and --with-agent flag."""
+
+    def test_skips_when_agents_disabled(self, monkeypatch, capsys) -> None:
+        """_run_agent_citation_eval returns early when AGENT_ENABLED=false."""
+        from doc_pipeline.config import settings
+
+        monkeypatch.setattr(settings.agents, "enabled", False)
+        report = EvalReport()
+        report.add("q1", ["a"], ["a"])
+        _run_agent_citation_eval(report, None, None, None, None, None, None)
+        out = capsys.readouterr().out
+        assert "AGENT_ENABLED is false" in out
+        assert not report.cite_precision  # no citations added
+
+    def test_with_agent_flag_parsed(self) -> None:
+        """--with-agent flag is recognized by argparse."""
+        import argparse
+
+        parser = argparse.ArgumentParser()
+        parser.add_argument("--with-agent", action="store_true")
+        args = parser.parse_args(["--with-agent"])
+        assert args.with_agent is True
+
+    def test_with_agent_flag_default_off(self) -> None:
+        """--with-agent defaults to False."""
+        import argparse
+
+        parser = argparse.ArgumentParser()
+        parser.add_argument("--with-agent", action="store_true")
+        args = parser.parse_args([])
+        assert args.with_agent is False
+
+    def test_success_path_collects_citations(self, monkeypatch) -> None:
+        """Agent enabled + citations returned → report.add_citation() called."""
+        from unittest.mock import AsyncMock, patch
+        from doc_pipeline.config import settings
+
+        monkeypatch.setattr(settings.agents, "enabled", True)
+
+        # Build a report with one query
+        report = EvalReport()
+        report.add("슬래브 균열 검토", ["doc1", "doc2"], ["doc1"])
+
+        # Mock agent result with citations
+        mock_citation = SimpleNamespace(doc_id="doc1", doc_ref="문서 1", relevance="high")
+        mock_answer = SimpleNamespace(
+            citations=[mock_citation],
+            confidence=0.85,
+            follow_up="추가 질문",
+        )
+        mock_result = SimpleNamespace(output=mock_answer)
+
+        mock_agent = MagicMock()
+        mock_agent.run = AsyncMock(return_value=mock_result)
+
+        # Mock unified_search to return fake doc results
+        fake_doc = SimpleNamespace(
+            doc_id="doc1",
+            top_chunks=[SimpleNamespace(text="슬래브 균열 검토 내용")],
+        )
+
+        def fake_unified_search(*_args, **_kwargs):
+            return [fake_doc], None
+
+        with (
+            patch("scripts.eval_search.get_search_agent", return_value=mock_agent, create=True),
+            patch("doc_pipeline.agents.search_agent.get_search_agent", return_value=mock_agent),
+        ):
+            monkeypatch.setattr(
+                "doc_pipeline.search.unified_search",
+                fake_unified_search,
+            )
+            _run_agent_citation_eval(
+                report,
+                store=object(),
+                get_embeddings_fn=lambda _c, texts: [[0.1] * 768 for _ in texts],
+                client=object(),
+                query_parser=None,
+                registry=None,
+                chunk_fts=None,
+            )
+
+        # Verify citation was recorded
+        assert len(report.cite_precision) == 1
+        assert report.cite_precision[0] == 1.0  # doc1 cited, doc1 expected
+        s = report.summary()
+        assert "CitePrecision" in s
+        assert s["CitePrecision"] == 1.0
 
 
 class TestEvalSearchDefaults:

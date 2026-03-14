@@ -74,6 +74,22 @@ def ndcg_at_k(retrieved_doc_ids: list[str], expected_doc_ids: list[str], k: int)
     return dcg / idcg if idcg > 0 else 0.0
 
 
+def citation_precision(cited_ids: list[str], expected_ids: list[str]) -> float:
+    """Fraction of cited docs that are actually relevant."""
+    if not cited_ids:
+        return 0.0
+    expected = set(expected_ids)
+    return sum(1 for d in cited_ids if d in expected) / len(cited_ids)
+
+
+def citation_recall(cited_ids: list[str], expected_ids: list[str]) -> float:
+    """Fraction of relevant docs that were cited."""
+    if not expected_ids:
+        return 0.0
+    cited = set(cited_ids)
+    return sum(1 for d in expected_ids if d in cited) / len(expected_ids)
+
+
 class EvalReport:
     """Aggregated evaluation metrics."""
 
@@ -83,6 +99,8 @@ class EvalReport:
         self.hit_5: list[float] = []
         self.mrr: list[float] = []
         self.ndcg_5: list[float] = []
+        self.cite_precision: list[float] = []
+        self.cite_recall: list[float] = []
         self.details: list[dict] = []
 
     def add(
@@ -119,11 +137,16 @@ class EvalReport:
             "intent": intent,
         })
 
+    def add_citation(self, cited_ids: list[str], expected_ids: list[str]) -> None:
+        """Record citation precision/recall for a single query."""
+        self.cite_precision.append(citation_precision(cited_ids, expected_ids))
+        self.cite_recall.append(citation_recall(cited_ids, expected_ids))
+
     def _mean(self, values: list[float]) -> float:
         return sum(values) / len(values) if values else 0.0
 
     def summary(self) -> dict:
-        return {
+        base = {
             "total_queries": len(self.hit_1),
             "Hit@1": round(self._mean(self.hit_1), 4),
             "Hit@3": round(self._mean(self.hit_3), 4),
@@ -131,6 +154,10 @@ class EvalReport:
             "MRR": round(self._mean(self.mrr), 4),
             "nDCG@5": round(self._mean(self.ndcg_5), 4),
         }
+        if self.cite_precision:
+            base["CitePrecision"] = round(self._mean(self.cite_precision), 4)
+            base["CiteRecall"] = round(self._mean(self.cite_recall), 4)
+        return base
 
     def summary_by_category(self) -> dict[str, dict]:
         """Return separate metric summaries grouped by category."""
@@ -321,6 +348,100 @@ def enrich_false_positive_docs(
     return enriched
 
 
+def _run_agent_citation_eval(
+    report: EvalReport,
+    store,
+    get_embeddings_fn,
+    client,
+    query_parser,
+    registry,
+    chunk_fts,
+) -> None:
+    """Run the search agent on each query in report.details and collect citation metrics.
+
+    Mutates ``report`` in-place by calling ``report.add_citation()`` for each query.
+    Requires pydantic-ai and AGENT_ENABLED=true.
+    """
+    try:
+        from doc_pipeline.agents.deps import SearchDeps
+        from doc_pipeline.agents.search_agent import get_search_agent
+        from doc_pipeline.search import unified_search
+    except ImportError as exc:
+        print(f"--with-agent: pydantic-ai not installed ({exc}). Skipping citation eval.")
+        return
+
+    from doc_pipeline.config import settings
+
+    if not settings.agents.enabled:
+        print("--with-agent: AGENT_ENABLED is false. Set AGENT_ENABLED=true to run agent eval.")
+        return
+
+    agent = get_search_agent()
+    total = len(report.details)
+    success = 0
+    errors = 0
+
+    print(f"\n--- Agent Citation Eval ({total} queries) ---")
+
+    for i, detail in enumerate(report.details):
+        query_text = detail["query"]
+        expected = detail.get("expected", [])
+
+        try:
+            # Recompute search context (same as API path)
+            if get_embeddings_fn and client:
+                query_emb = get_embeddings_fn(client, [query_text])[0]
+            else:
+                query_emb = [0.0] * 768
+
+            doc_results, _ = unified_search(
+                store, query_text, query_emb,
+                n_results=10,
+                query_parser=query_parser,
+                registry=registry,
+                chunk_fts=chunk_fts,
+            )
+
+            if not doc_results:
+                report.add_citation([], expected)
+                continue
+
+            # Build RAG context (lightweight inline version)
+            references: list[dict] = []
+            context_parts: list[str] = []
+            for j, doc_res in enumerate(doc_results[:5], 1):
+                chunk_text = doc_res.top_chunks[0].text[:500] if doc_res.top_chunks else ""
+                context_parts.append(f"[문서 {j}] (doc_id={doc_res.doc_id}) {chunk_text}")
+                references.append({"doc_id": doc_res.doc_id, "doc_type": ""})
+            rag_prompt = f"질문: {query_text}\n\n검색 결과:\n" + "\n\n".join(context_parts)
+
+            deps = SearchDeps(
+                query=query_text,
+                rag_prompt=rag_prompt,
+                references=references,
+            )
+
+            import asyncio
+            result = asyncio.get_event_loop().run_until_complete(agent.run(query_text, deps=deps))
+            answer_obj = result.output
+
+            # Extract cited doc_ids from agent citations
+            cited_ids = [c.doc_id for c in answer_obj.citations if c.doc_id]
+            report.add_citation(cited_ids, expected)
+            success += 1
+
+            if (i + 1) % 10 == 0:
+                print(f"  [{i + 1}/{total}] processed...")
+
+        except Exception as exc:
+            errors += 1
+            report.add_citation([], expected)
+            if errors <= 3:
+                print(f"  Warning: query {i + 1} failed: {exc}")
+
+    print(f"  Done: {success} ok, {errors} errors out of {total}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Evaluate search quality")
     parser.add_argument(
@@ -332,6 +453,10 @@ def main() -> None:
     parser.add_argument("--compare", action="store_true", help="Compare to baseline")
     parser.add_argument("--output", default=None, help="Report path (default: evals/eval_report.json)")
     parser.add_argument("--baseline-path", default=None, help="Baseline path (default: evals/baseline.json)")
+    parser.add_argument(
+        "--with-agent", action="store_true",
+        help="Run search agent for each query to collect citation metrics (requires AGENT_ENABLED, makes LLM calls)",
+    )
     args = parser.parse_args()
 
     from doc_pipeline.config import settings
@@ -464,6 +589,11 @@ def main() -> None:
         get_embeddings_fn=embeddings_fn, client=client,
         query_parser=qp, registry=registry, chunk_fts=chunk_fts,
     )
+
+    # --with-agent: run search agent for citation quality metrics
+    if args.with_agent:
+        _run_agent_citation_eval(report, store, embeddings_fn, client, qp, registry, chunk_fts)
+
     summary = report.summary()
     judged_count = len(judged_queries)
     skipped_count = len(ungrounded_queries)
@@ -500,6 +630,10 @@ def main() -> None:
     print(f"  Hit@5:    {summary['Hit@5']:.1%}")
     print(f"  MRR:      {summary['MRR']:.4f}")
     print(f"  nDCG@5:   {summary['nDCG@5']:.4f}")
+    if "CitePrecision" in summary:
+        print(f"\n--- Citation Quality (--with-agent) ---")
+        print(f"  CitePrecision: {summary['CitePrecision']:.1%}")
+        print(f"  CiteRecall:    {summary['CiteRecall']:.1%}")
     if curated_summary["total_queries"] > 0:
         print("\n--- Curated ---")
         print(f"  n={curated_summary['total_queries']}  "
@@ -579,7 +713,10 @@ def main() -> None:
         with open(baseline_out, encoding="utf-8") as f:
             baseline = json.load(f)
         print("\n=== Comparison vs Baseline ===")
-        for metric in ("Hit@1", "Hit@3", "Hit@5", "MRR", "nDCG@5"):
+        metrics_to_compare = ["Hit@1", "Hit@3", "Hit@5", "MRR", "nDCG@5"]
+        if "CitePrecision" in summary:
+            metrics_to_compare.extend(["CitePrecision", "CiteRecall"])
+        for metric in metrics_to_compare:
             old = baseline.get(metric, 0)
             new = summary.get(metric, 0)
             delta = new - old
